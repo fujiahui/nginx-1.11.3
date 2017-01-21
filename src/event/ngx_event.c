@@ -480,8 +480,14 @@ ngx_event_module_init(ngx_cycle_t *cycle)
 
 
     /* cl should be equal to or greater than cache line size */
-
-    cl = 128;
+	/*
+		其实这里第一个目的是为了留给lock一个空间，
+		另外一个主要的目的是为了提高性能。
+		这样可以将lock与其它数据分开到不同的 cacheline中去，
+		于是，其它数据的修改(其它几个数据是原子操作，可并发修改)
+		就不会导致有lock的cacheline的失效
+	*/
+    cl = 128;	// 要大于或等待cache line
 
     size = cl            /* ngx_accept_mutex */
            + cl          /* ngx_connection_counter */
@@ -513,6 +519,7 @@ ngx_event_module_init(ngx_cycle_t *cycle)
     ngx_accept_mutex_ptr = (ngx_atomic_t *) shared;
     ngx_accept_mutex.spin = (ngx_uint_t) -1;
 
+	// 共享内存的初始位置就是我们要创建shmtx的locked
     if (ngx_shmtx_create(&ngx_accept_mutex, (ngx_shmtx_sh_t *) shared,
                          cycle->lock_file.data)
         != NGX_OK)

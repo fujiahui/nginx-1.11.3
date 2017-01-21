@@ -23,16 +23,18 @@ typedef struct {
 
 typedef struct {
 #if (NGX_HAVE_ATOMIC_OPS)
-    ngx_atomic_t  *lock;
+	// 指向存放在共享内存里面的lock的地址
+    ngx_atomic_t  *lock;	// 如果支持原子操作的锁
 #if (NGX_HAVE_POSIX_SEM)
     ngx_atomic_t  *wait;
     ngx_uint_t     semaphore;
     sem_t          sem;
 #endif
 #else
-    ngx_fd_t       fd;
+    ngx_fd_t       fd;	//不支持原子操作的话就使用文件锁来实现
     u_char        *name;
 #endif
+	// 自旋锁时，可由它来控制自旋的时间
     ngx_uint_t     spin;
 } ngx_shmtx_t;
 
