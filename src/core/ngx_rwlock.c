@@ -23,6 +23,7 @@ ngx_rwlock_wlock(ngx_atomic_t *lock)
 
     for ( ;; ) {
 
+		// 看看lock中的值是不是0，是的话将NGX_RWLOCK_WLOCK 值写入到lock中
         if (*lock == 0 && ngx_atomic_cmp_set(lock, 0, NGX_RWLOCK_WLOCK)) {
             return;
         }
