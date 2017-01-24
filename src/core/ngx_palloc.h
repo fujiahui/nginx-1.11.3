@@ -33,7 +33,7 @@ typedef struct ngx_pool_cleanup_s  ngx_pool_cleanup_t;
 
 struct ngx_pool_cleanup_s {
     ngx_pool_cleanup_pt   handler;
-    void                 *data;
+    void                 *data;	// 指向要清除的数据
     ngx_pool_cleanup_t   *next;
 };
 
@@ -41,29 +41,30 @@ struct ngx_pool_cleanup_s {
 typedef struct ngx_pool_large_s  ngx_pool_large_t;
 
 struct ngx_pool_large_s {
-    ngx_pool_large_t     *next;
-    void                 *alloc;
+    ngx_pool_large_t     *next;	//	指向下一块大块内存
+    void                 *alloc;	//	指向分配的大块内存
 };
 
 
 typedef struct {
-    u_char               *last;
-    u_char               *end;
-    ngx_pool_t           *next;
-    ngx_uint_t            failed;
+    u_char               *last;	//	当前可用空间的尾部边界地址,
+    u_char               *end;	// 内存池结束位置
+    ngx_pool_t           *next;	//	内存池里面有很多块内存，这些内存块就是通过该指针连成链表的
+    ngx_uint_t            failed;	//	内存池分配失败次数
 } ngx_pool_data_t;
 
 
 struct ngx_pool_s {
     ngx_pool_data_t       d;
-    size_t                max;
-    ngx_pool_t           *current;
-    ngx_chain_t          *chain;
-    ngx_pool_large_t     *large;
-    ngx_pool_cleanup_t   *cleanup;
+    size_t                max;	// 内存池数据块的最大值
+    ngx_pool_t           *current;	// 当前内存池pool结点地址
+    ngx_chain_t          *chain;	// 
+    ngx_pool_large_t     *large;	// 大块内存链表，即分配空间超过max的内存
+    ngx_pool_cleanup_t   *cleanup;	// 释放内存池的callback
     ngx_log_t            *log;
 };
 
+// sizeof(ngx_pool_data_t)=16B，sizeof(ngx_pool_t)=40B
 
 typedef struct {
     ngx_fd_t              fd;
