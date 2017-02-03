@@ -58,7 +58,7 @@ struct ngx_pool_s {
     ngx_pool_data_t       d;
     size_t                max;	// 内存池数据块的最大值
     ngx_pool_t           *current;	// 当前内存池pool结点地址
-    ngx_chain_t          *chain;	// 
+    ngx_chain_t          *chain;	// 该指针挂接一个ngx_chain_t结构
     ngx_pool_large_t     *large;	// 大块内存链表，即分配空间超过max的内存
     ngx_pool_cleanup_t   *cleanup;	// 释放内存池的callback
     ngx_log_t            *log;

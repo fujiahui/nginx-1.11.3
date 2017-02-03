@@ -241,6 +241,7 @@ ngx_palloc_large(ngx_pool_t *pool, size_t size)
 
     n = 0;
 
+	// 第一次分配大内存时pool->large为空，直接跳出for循环 
     for (large = pool->large; large; large = large->next) {
         if (large->alloc == NULL) {
             large->alloc = p;
