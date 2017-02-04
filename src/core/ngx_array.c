@@ -54,6 +54,7 @@ ngx_array_push(ngx_array_t *a)
     size_t       size;
     ngx_pool_t  *p;
 
+	//	如果数组已满
     if (a->nelts == a->nalloc) {
 
         /* the array is full */
@@ -62,6 +63,7 @@ ngx_array_push(ngx_array_t *a)
 
         p = a->pool;
 
+		//	pool有足够的空间可以用来扩展一个元素
         if ((u_char *) a->elts + size == p->d.last
             && p->d.last + a->size <= p->d.end)
         {
@@ -81,16 +83,16 @@ ngx_array_push(ngx_array_t *a)
                 return NULL;
             }
 
-            ngx_memcpy(new, a->elts, size);
-            a->elts = new;
-            a->nalloc *= 2;
+            ngx_memcpy(new, a->elts, size);	//将原来数据区的内容拷贝到新的数据区
+            a->elts = new;	
+            a->nalloc *= 2;	//	注意：此处转移数据后，并未释放原来的数据区，内存池将统一释放  
         }
     }
 
     elt = (u_char *) a->elts + a->size * a->nelts;
     a->nelts++;
 
-    return elt;
+    return elt;	//	返回该末尾指针，即下一个元素应该存放的位置
 }
 
 
