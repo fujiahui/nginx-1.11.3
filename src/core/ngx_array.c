@@ -14,11 +14,13 @@ ngx_array_create(ngx_pool_t *p, ngx_uint_t n, size_t size)
 {
     ngx_array_t *a;
 
+	// 首先申请ngx_array_t数组的内存空间
     a = ngx_palloc(p, sizeof(ngx_array_t));
     if (a == NULL) {
         return NULL;
     }
 
+	// 初始化ngx_array_t数组内部数据
     if (ngx_array_init(a, p, n, size) != NGX_OK) {
         return NULL;
     }
@@ -26,7 +28,7 @@ ngx_array_create(ngx_pool_t *p, ngx_uint_t n, size_t size)
     return a;
 }
 
-
+//	销毁数组头和数组数据区
 void
 ngx_array_destroy(ngx_array_t *a)
 {
@@ -34,12 +36,13 @@ ngx_array_destroy(ngx_array_t *a)
 
     p = a->pool;
 
+	//	
     if ((u_char *) a->elts + a->size * a->nalloc == p->d.last) {
-        p->d.last -= a->size * a->nalloc;
+        p->d.last -= a->size * a->nalloc;	//	设置内存池的last指针
     }
 
     if ((u_char *) a + sizeof(ngx_array_t) == p->d.last) {
-        p->d.last = (u_char *) a;
+        p->d.last = (u_char *) a;	//	设置内存池的last指针
     }
 }
 
