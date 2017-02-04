@@ -14,6 +14,7 @@ ngx_list_create(ngx_pool_t *pool, ngx_uint_t n, size_t size)
 {
     ngx_list_t  *list;
 
+	//	从内存池中分配链表头
     list = ngx_palloc(pool, sizeof(ngx_list_t));
     if (list == NULL) {
         return NULL;
@@ -35,7 +36,7 @@ ngx_list_push(ngx_list_t *l)
 
     last = l->last;
 
-    if (last->nelts == l->nalloc) {
+    if (last->nelts == l->nalloc) {	//	链表数据区满
 
         /* the last part is full, allocate a new list part */
 
@@ -56,6 +57,7 @@ ngx_list_push(ngx_list_t *l)
         l->last = last;
     }
 
+	//	找到下一个空闲的链表节点 然后返回节点地址
     elt = (char *) last->elts + l->size * last->nelts;
     last->nelts++;
 
