@@ -103,8 +103,9 @@ struct ngx_queue_s {
 #define ngx_queue_data(q, type, link)                                         \
     (type *) ((u_char *) q - offsetof(type, link))
 
-
+//	一个指针前进一次，一个指针前进两次
 ngx_queue_t *ngx_queue_middle(ngx_queue_t *queue);
+//	插入排序
 void ngx_queue_sort(ngx_queue_t *queue,
     ngx_int_t (*cmp)(const ngx_queue_t *, const ngx_queue_t *));
 

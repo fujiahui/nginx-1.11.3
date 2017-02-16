@@ -12,7 +12,7 @@
 
 
 typedef struct {
-    ngx_array_t               pools;
+    ngx_array_t               pools;	//	管理多个线程池
 } ngx_thread_pool_conf_t;
 
 
@@ -102,7 +102,7 @@ static ngx_uint_t               ngx_thread_pool_task_id;
 static ngx_atomic_t             ngx_thread_pool_done_lock;
 static ngx_thread_pool_queue_t  ngx_thread_pool_done;
 
-
+//	初始化一个线程池
 static ngx_int_t
 ngx_thread_pool_init(ngx_thread_pool_t *tp, ngx_log_t *log, ngx_pool_t *pool)
 {
@@ -111,18 +111,21 @@ ngx_thread_pool_init(ngx_thread_pool_t *tp, ngx_log_t *log, ngx_pool_t *pool)
     ngx_uint_t      n;
     pthread_attr_t  attr;
 
+	//	没有通知处理
     if (ngx_notify == NULL) {
         ngx_log_error(NGX_LOG_ALERT, log, 0,
                "the configured event method cannot be used with thread pools");
         return NGX_ERROR;
     }
 
-    ngx_thread_pool_queue_init(&tp->queue);
+    ngx_thread_pool_queue_init(&tp->queue);	//	初始化该线程池中任务队列
 
+	//	创建该线程池的互斥量
     if (ngx_thread_mutex_create(&tp->mtx, log) != NGX_OK) {
         return NGX_ERROR;
     }
 
+	//	创建线程池的条件变量
     if (ngx_thread_cond_create(&tp->cond, log) != NGX_OK) {
         (void) ngx_thread_mutex_destroy(&tp->mtx, log);
         return NGX_ERROR;
@@ -130,6 +133,7 @@ ngx_thread_pool_init(ngx_thread_pool_t *tp, ngx_log_t *log, ngx_pool_t *pool)
 
     tp->log = log;
 
+	//	设置线程属性
     err = pthread_attr_init(&attr);
     if (err) {
         ngx_log_error(NGX_LOG_ALERT, log, err,
@@ -138,6 +142,7 @@ ngx_thread_pool_init(ngx_thread_pool_t *tp, ngx_log_t *log, ngx_pool_t *pool)
     }
 
 #if 0
+	//	设置栈大小
     err = pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
     if (err) {
         ngx_log_error(NGX_LOG_ALERT, log, err,
@@ -147,6 +152,7 @@ ngx_thread_pool_init(ngx_thread_pool_t *tp, ngx_log_t *log, ngx_pool_t *pool)
 #endif
 
     for (n = 0; n < tp->threads; n++) {
+		//	创建线程池, ngx_thread_pool_cycle为线程执行的函数
         err = pthread_create(&tid, &attr, ngx_thread_pool_cycle, tp);
         if (err) {
             ngx_log_error(NGX_LOG_ALERT, log, err,
@@ -155,12 +161,13 @@ ngx_thread_pool_init(ngx_thread_pool_t *tp, ngx_log_t *log, ngx_pool_t *pool)
         }
     }
 
+	//	摧毁线程属性
     (void) pthread_attr_destroy(&attr);
 
     return NGX_OK;
 }
 
-
+//	销毁线程池
 static void
 ngx_thread_pool_destroy(ngx_thread_pool_t *tp)
 {
@@ -170,10 +177,12 @@ ngx_thread_pool_destroy(ngx_thread_pool_t *tp)
 
     ngx_memzero(&task, sizeof(ngx_thread_task_t));
 
+	//	任务退出执行函数
     task.handler = ngx_thread_pool_exit_handler;
+	//	指向传入的参数
     task.ctx = (void *) &lock;
 
-    for (n = 0; n < tp->threads; n++) {
+    for (n = 0; n < tp->threads; n++) {	//	tp中所有的线程池添加该任务
         lock = 1;
 
         if (ngx_thread_task_post(tp, &task) != NGX_OK) {
@@ -181,11 +190,15 @@ ngx_thread_pool_destroy(ngx_thread_pool_t *tp)
         }
 
         while (lock) {
+			//	主进程判断如果lock没有改变，就让CPU给其他线程执行，
+			//	以此等待，相当于pthread_join
             ngx_sched_yield();
         }
 
         task.event.active = 0;
     }
+
+	//	此时到这边，所有的线程都已经退出
 
     (void) ngx_thread_cond_destroy(&tp->cond, tp->log);
 
@@ -203,7 +216,7 @@ ngx_thread_pool_exit_handler(void *data, ngx_log_t *log)
     pthread_exit(0);
 }
 
-
+//	申请一个任务的内存 
 ngx_thread_task_t *
 ngx_thread_task_alloc(ngx_pool_t *pool, size_t size)
 {
@@ -219,20 +232,22 @@ ngx_thread_task_alloc(ngx_pool_t *pool, size_t size)
     return task;
 }
 
-
+//	添加任务
 ngx_int_t
 ngx_thread_task_post(ngx_thread_pool_t *tp, ngx_thread_task_t *task)
 {
-    if (task->event.active) {
+    if (task->event.active) {	//	任务已经添加
         ngx_log_error(NGX_LOG_ALERT, tp->log, 0,
                       "task #%ui already active", task->id);
         return NGX_ERROR;
     }
 
+	//	获得锁
     if (ngx_thread_mutex_lock(&tp->mtx, tp->log) != NGX_OK) {
         return NGX_ERROR;
     }
 
+	//	如果已有的任务数大于最大的任务数
     if (tp->waiting >= tp->max_queue) {
         (void) ngx_thread_mutex_unlock(&tp->mtx, tp->log);
 
@@ -242,20 +257,21 @@ ngx_thread_task_post(ngx_thread_pool_t *tp, ngx_thread_task_t *task)
         return NGX_ERROR;
     }
 
-    task->event.active = 1;
+    task->event.active = 1;	//	任务已经活跃
 
-    task->id = ngx_thread_pool_task_id++;
+    task->id = ngx_thread_pool_task_id++;	//	任务id
     task->next = NULL;
 
+	//	条件变量通知，有可能有线程正在等待任务处理
     if (ngx_thread_cond_signal(&tp->cond, tp->log) != NGX_OK) {
         (void) ngx_thread_mutex_unlock(&tp->mtx, tp->log);
         return NGX_ERROR;
     }
 
-    *tp->queue.last = task;
-    tp->queue.last = &task->next;
+    *tp->queue.last = task;	//	最后一个任务指向现有任务
+    tp->queue.last = &task->next;	//	现有任务变为最后一个任务
 
-    tp->waiting++;
+    tp->waiting++;	//	任务数加1
 
     (void) ngx_thread_mutex_unlock(&tp->mtx, tp->log);
 
@@ -266,7 +282,7 @@ ngx_thread_task_post(ngx_thread_pool_t *tp, ngx_thread_task_t *task)
     return NGX_OK;
 }
 
-
+//	线程创建后的执行函数
 static void *
 ngx_thread_pool_cycle(void *data)
 {
@@ -290,6 +306,7 @@ ngx_thread_pool_cycle(void *data)
     sigdelset(&set, SIGSEGV);
     sigdelset(&set, SIGBUS);
 
+	//	屏蔽的信号
     err = pthread_sigmask(SIG_BLOCK, &set, NULL);
     if (err) {
         ngx_log_error(NGX_LOG_ALERT, tp->log, err, "pthread_sigmask() failed");
@@ -297,6 +314,7 @@ ngx_thread_pool_cycle(void *data)
     }
 
     for ( ;; ) {
+		//	获得互斥量
         if (ngx_thread_mutex_lock(&tp->mtx, tp->log) != NGX_OK) {
             return NULL;
         }
@@ -305,6 +323,7 @@ ngx_thread_pool_cycle(void *data)
         tp->waiting--;
 
         while (tp->queue.first == NULL) {
+			//	此时任务队列为空，在条件变量上等待
             if (ngx_thread_cond_wait(&tp->cond, &tp->mtx, tp->log)
                 != NGX_OK)
             {
@@ -332,7 +351,7 @@ ngx_thread_pool_cycle(void *data)
                        "run task #%ui in thread pool \"%V\"",
                        task->id, &tp->name);
 
-        task->handler(task->ctx, tp->log);
+        task->handler(task->ctx, tp->log);	//	执行任务
 
         ngx_log_debug2(NGX_LOG_DEBUG_CORE, tp->log, 0,
                        "complete task #%ui in thread pool \"%V\"",
@@ -342,12 +361,12 @@ ngx_thread_pool_cycle(void *data)
 
         ngx_spinlock(&ngx_thread_pool_done_lock, 1, 2048);
 
-        *ngx_thread_pool_done.last = task;
-        ngx_thread_pool_done.last = &task->next;
+        *ngx_thread_pool_done.last = task;	//	已经执行完的任务放在队列尾
+        ngx_thread_pool_done.last = &task->next;	//	执行最后一个任务
 
         ngx_memory_barrier();
 
-        ngx_unlock(&ngx_thread_pool_done_lock);
+        ngx_unlock(&ngx_thread_pool_done_lock);	//	退出自旋锁
 
         (void) ngx_notify(ngx_thread_pool_handler);
     }
@@ -386,7 +405,7 @@ ngx_thread_pool_handler(ngx_event_t *ev)
     }
 }
 
-
+//	线程模块配置申请内存
 static void *
 ngx_thread_pool_create_conf(ngx_cycle_t *cycle)
 {
@@ -397,6 +416,7 @@ ngx_thread_pool_create_conf(ngx_cycle_t *cycle)
         return NULL;
     }
 
+	//	总的线程池的个数
     if (ngx_array_init(&tcf->pools, cycle->pool, 4,
                        sizeof(ngx_thread_pool_t *))
         != NGX_OK)
@@ -407,7 +427,7 @@ ngx_thread_pool_create_conf(ngx_cycle_t *cycle)
     return tcf;
 }
 
-
+//	线程模块配置初始化
 static char *
 ngx_thread_pool_init_conf(ngx_cycle_t *cycle, void *conf)
 {
@@ -420,7 +440,7 @@ ngx_thread_pool_init_conf(ngx_cycle_t *cycle, void *conf)
 
     for (i = 0; i < tcf->pools.nelts; i++) {
 
-        if (tpp[i]->threads) {
+        if (tpp[i]->threads) {	//	线程数目不为0时，直接跳过
             continue;
         }
 
@@ -429,8 +449,8 @@ ngx_thread_pool_init_conf(ngx_cycle_t *cycle, void *conf)
                            ngx_thread_pool_default.len)
                == 0)
         {
-            tpp[i]->threads = 32;
-            tpp[i]->max_queue = 65536;
+            tpp[i]->threads = 32;	//	默认的线程数
+            tpp[i]->max_queue = 65536;	//	默认的任务数
             continue;
         }
 
@@ -444,7 +464,7 @@ ngx_thread_pool_init_conf(ngx_cycle_t *cycle, void *conf)
     return NGX_CONF_OK;
 }
 
-
+//	配置解析
 static char *
 ngx_thread_pool(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
@@ -454,7 +474,7 @@ ngx_thread_pool(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     value = cf->args->elts;
 
-    tp = ngx_thread_pool_add(cf, &value[1]);
+    tp = ngx_thread_pool_add(cf, &value[1]);	//	添加线程池
 
     if (tp == NULL) {
         return NGX_CONF_ERROR;
@@ -571,7 +591,7 @@ ngx_thread_pool_get(ngx_cycle_t *cycle, ngx_str_t *name)
     return NULL;
 }
 
-
+//	创建每一个线程池
 static ngx_int_t
 ngx_thread_pool_init_worker(ngx_cycle_t *cycle)
 {
@@ -605,7 +625,7 @@ ngx_thread_pool_init_worker(ngx_cycle_t *cycle)
     return NGX_OK;
 }
 
-
+//	销毁每一个线程池
 static void
 ngx_thread_pool_exit_worker(ngx_cycle_t *cycle)
 {

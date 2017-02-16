@@ -24,7 +24,7 @@ struct ngx_rbtree_node_s {
     ngx_rbtree_node_t     *left;
     ngx_rbtree_node_t     *right;
     ngx_rbtree_node_t     *parent;
-    u_char                 color;
+    u_char                 color;	//	节点颜色，0表示黑色，1表示红色
     u_char                 data;
 };
 
@@ -35,9 +35,9 @@ typedef void (*ngx_rbtree_insert_pt) (ngx_rbtree_node_t *root,
     ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel);
 
 struct ngx_rbtree_s {
-    ngx_rbtree_node_t     *root;
-    ngx_rbtree_node_t     *sentinel;
-    ngx_rbtree_insert_pt   insert;
+    ngx_rbtree_node_t     *root;	//	根节点
+    ngx_rbtree_node_t     *sentinel;	//	设置树的哨兵节点
+    ngx_rbtree_insert_pt   insert;	//	插入方法的函数指针
 };
 
 
@@ -64,7 +64,7 @@ void ngx_rbtree_insert_timer_value(ngx_rbtree_node_t *root,
 
 
 /* a sentinel must be black */
-
+//	初始化哨兵节点，实际设置颜色为黑色
 #define ngx_rbtree_sentinel_init(node)  ngx_rbt_black(node)
 
 

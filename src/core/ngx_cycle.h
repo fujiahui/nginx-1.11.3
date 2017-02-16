@@ -36,10 +36,13 @@ struct ngx_shm_zone_s {
 
 
 struct ngx_cycle_s {
+	//	首先是一个void***型的数组 array[void***]
+	//	数组成员又是一个void***指针
+	//	这个指针指向另一个存储着指针的数组array[void*]
     void                  ****conf_ctx;
     ngx_pool_t               *pool;
 
-    ngx_log_t                *log;
+    ngx_log_t                *log;	//	没有执行ngx_init_cycle方法前
     ngx_log_t                 new_log;
 
     ngx_uint_t                log_use_stderr;  /* unsigned  log_use_stderr:1; */
@@ -52,13 +55,14 @@ struct ngx_cycle_s {
     ngx_uint_t                modules_n;
     ngx_uint_t                modules_used;    /* unsigned  modules_used:1; */
 
-    ngx_queue_t               reusable_connections_queue;
+	//	ngx_connection_t,双向链表,可重复使用的连接队列
+    ngx_queue_t               reusable_connections_queue;	
 
-    ngx_array_t               listening;
+    ngx_array_t               listening;	//	ngx_listening_t
     ngx_array_t               paths;
     ngx_array_t               config_dump;
-    ngx_list_t                open_files;
-    ngx_list_t                shared_memory;
+    ngx_list_t                open_files;	//	ngx_open_file_t
+    ngx_list_t                shared_memory;	//	ngx_shm_zone_t
 
     ngx_uint_t                connection_n;
     ngx_uint_t                files_n;
@@ -69,12 +73,12 @@ struct ngx_cycle_s {
 
     ngx_cycle_t              *old_cycle;
 
-    ngx_str_t                 conf_file;
+    ngx_str_t                 conf_file;	//	配置文件路径
     ngx_str_t                 conf_param;
-    ngx_str_t                 conf_prefix;
-    ngx_str_t                 prefix;
-    ngx_str_t                 lock_file;
-    ngx_str_t                 hostname;
+    ngx_str_t                 conf_prefix;	//	配置文件路径
+    ngx_str_t                 prefix;	//	配置文件路径
+    ngx_str_t                 lock_file;	//	进程间同步的文件锁名称
+    ngx_str_t                 hostname;	//	使用gethostname系统调用得到的主机名
 };
 
 

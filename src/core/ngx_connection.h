@@ -23,7 +23,7 @@ struct ngx_listening_s {
     size_t              addr_text_max_len;
     ngx_str_t           addr_text;
 
-    int                 type;
+    int                 type;	//当type是SOCK_STREAM 表示TCP
 
     int                 backlog;
     int                 rcvbuf;
@@ -42,13 +42,14 @@ struct ngx_listening_s {
     ngx_log_t           log;
     ngx_log_t          *logp;
 
+	//	新的TCP连接创建内存池POOL 初始化大小为pool_size
     size_t              pool_size;
     /* should be here because of the AcceptEx() preread */
     size_t              post_accept_buffer_size;
     /* should be here because of the deferred accept */
     ngx_msec_t          post_accept_timeout;
 
-    ngx_listening_t    *previous;
+    ngx_listening_t    *previous;	//多个ngx_listening_t结构之间构成单链表
     ngx_connection_t   *connection;
 
     ngx_uint_t          worker;

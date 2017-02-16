@@ -199,6 +199,7 @@ main(int argc, char *const *argv)
         return 1;
     }
 
+	//	½âÎöÃüÁîĞĞ
     if (ngx_get_options(argc, argv) != NGX_OK) {
         return 1;
     }

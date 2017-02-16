@@ -8,6 +8,12 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 
+/* @hash 表示哈希表的结构体
+ * @key  表示根据哈希方法计算出来的hash值
+ * @name 表示实际关键字地址
+ * @len  表示实际关键字长度
+ */
+
 
 void *
 ngx_hash_find(ngx_hash_t *hash, ngx_uint_t key, u_char *name, size_t len)
@@ -19,6 +25,7 @@ ngx_hash_find(ngx_hash_t *hash, ngx_uint_t key, u_char *name, size_t len)
     ngx_log_error(NGX_LOG_ALERT, ngx_cycle->log, 0, "hf:\"%*s\"", len, name);
 #endif
 
+	//	由key找到所在的bucket(该bucket中保存其elts地址)
     elt = hash->buckets[key % hash->size];
 
     if (elt == NULL) {
@@ -36,10 +43,12 @@ ngx_hash_find(ngx_hash_t *hash, ngx_uint_t key, u_char *name, size_t len)
             }
         }
 
+		//	匹配成功，直接返回该ngx_hash_elt_t结构的value字段
         return elt->value;
 
     next:
 
+		//	注意此处从elt->name[0]地址处向后偏移，故偏移只需加该elt的len即可，然后在以4字节对齐
         elt = (ngx_hash_elt_t *) ngx_align_ptr(&elt->name[0] + elt->len,
                                                sizeof(void *));
         continue;
@@ -71,6 +80,7 @@ ngx_hash_find_wc_head(ngx_hash_wildcard_t *hwc, u_char *name, size_t len)
 
     key = 0;
 
+	//	BKDR算法映射为整数
     for (i = n; i < len; i++) {
         key = ngx_hash(key, name[i]);
     }
@@ -79,12 +89,14 @@ ngx_hash_find_wc_head(ngx_hash_wildcard_t *hwc, u_char *name, size_t len)
     ngx_log_error(NGX_LOG_ALERT, ngx_cycle->log, 0, "key:\"%ui\"", key);
 #endif
 
+	//	查找value用户数据
     value = ngx_hash_find(&hwc->hash, key, &name[n], len - n);
 
 #if 0
     ngx_log_error(NGX_LOG_ALERT, ngx_cycle->log, 0, "value:\"%p\"", value);
 #endif
 
+	//	value指针低2位来携带信息
     if (value) {
 
         /*
@@ -98,6 +110,7 @@ ngx_hash_find_wc_head(ngx_hash_wildcard_t *hwc, u_char *name, size_t len)
          *          "*.example.com" only.
          */
 
+		// 10
         if ((uintptr_t) value & 2) {
 
             if (n == 0) {
@@ -105,14 +118,20 @@ ngx_hash_find_wc_head(ngx_hash_wildcard_t *hwc, u_char *name, size_t len)
                 /* "example.com" */
 
                 if ((uintptr_t) value & 1) {
+					//	value低两位为11，仅为"*.example.com"的指针，
+					//	这里没有通配符，没招到，返回NULL
                     return NULL;
                 }
 
+				//	value低两位为10，为"example.com"的指针，
+				//	value就在下一级的ngx_hash_wildcard_t 的value中，去掉携带的低2位11
                 hwc = (ngx_hash_wildcard_t *)
                                           ((uintptr_t) value & (uintptr_t) ~3);
                 return hwc->value;
             }
 
+			//	还未搜索完，低两位为11或10，继续去下级ngx_hash_wildcard_t中搜索
+			/*	"*.example.com"	*/
             hwc = (ngx_hash_wildcard_t *) ((uintptr_t) value & (uintptr_t) ~3);
 
             value = ngx_hash_find_wc_head(hwc, name, n - 1);
@@ -124,15 +143,17 @@ ngx_hash_find_wc_head(ngx_hash_wildcard_t *hwc, u_char *name, size_t len)
             return hwc->value;
         }
 
+		//	01
         if ((uintptr_t) value & 1) {
 
+			//	关键字没有通配符，错误返回空
             if (n == 0) {
 
                 /* "example.com" */
 
                 return NULL;
             }
-
+			//	有通配符，直接返回
             return (void *) ((uintptr_t) value & (uintptr_t) ~3);
         }
 
@@ -248,6 +269,11 @@ ngx_hash_find_combined(ngx_hash_combined_t *hash, ngx_uint_t key, u_char *name,
 #define NGX_HASH_ELT_SIZE(name)                                               \
     (sizeof(void *) + ngx_align((name)->key.len + 2, sizeof(void *)))
 
+/*
+ * hinit是哈希表初始化结构指针，
+ * names是预添加到哈希表结构的数组，
+ * nelts为names元素个数
+*/
 ngx_int_t
 ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
 {
@@ -265,9 +291,11 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
         return NGX_ERROR;
     }
 
+	//	nelts是names数组中(实际)元素的个数
     for (n = 0; n < nelts; n++) {
         if (hinit->bucket_size < NGX_HASH_ELT_SIZE(&names[n]) + sizeof(void *))
         {
+        	//	有任何一个元素，槽的大小不够为该元素分配空间，则退出
             ngx_log_error(NGX_LOG_EMERG, hinit->pool->log, 0,
                           "could not build %s, you should "
                           "increase %s_bucket_size: %i",
@@ -276,13 +304,16 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
         }
     }
 
+	//	test 是short数组，用于临时保存每个桶的当前大小 
     test = ngx_alloc(hinit->max_size * sizeof(u_short), hinit->pool->log);
     if (test == NULL) {
         return NGX_ERROR;
     }
 
+	//	为什么会多一个指针大小呢？这里主要还是为了后面将每个元素对齐到指针
     bucket_size = hinit->bucket_size - sizeof(void *);
 
+	//	最少需要start个桶
     start = nelts / (bucket_size / (2 * sizeof(void *)));
     start = start ? start : 1;
 
@@ -290,16 +321,21 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
         start = hinit->max_size - 1000;
     }
 
+	//	从最小桶数目开始试，计算容下 nelts 个元素需要多少个桶
+	// 因为会有多个name存储到一个桶中
     for (size = start; size <= hinit->max_size; size++) {
 
         ngx_memzero(test, size * sizeof(u_short));
 
+		//	测试出最大的name的情况
         for (n = 0; n < nelts; n++) {
             if (names[n].key.data == NULL) {
                 continue;
             }
 
+			//	根据哈希值计算计算要放在哪个桶
             key = names[n].key_hash % size;
+			//	将桶大小增加一个ngx_hash_elt_t
             test[key] = (u_short) (test[key] + NGX_HASH_ELT_SIZE(&names[n]));
 
 #if 0
@@ -308,11 +344,13 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
                           size, key, test[key], &names[n].key);
 #endif
 
+			//	发现放在size 个桶中，还是有放不下的情况，所以需要的桶+1，再循环
             if (test[key] > (u_short) bucket_size) {
                 goto next;
             }
         }
 
+		//	names中所有元素都可以放入size个桶中，找到正确的size大小了
         goto found;
 
     next:
@@ -331,32 +369,40 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
 
 found:
 
+	//	执行到这里就得到了 容下 nelts 个元素需要 size 个桶 ，初始化每个桶大小
     for (i = 0; i < size; i++) {
         test[i] = sizeof(void *);
     }
 
+	//	计算实际上每个桶的大小
     for (n = 0; n < nelts; n++) {
         if (names[n].key.data == NULL) {
             continue;
         }
 
+		//	根据哈希值，应该放在第key个桶中，大小增加一个ngx_hash_elt_t
         key = names[n].key_hash % size;
         test[key] = (u_short) (test[key] + NGX_HASH_ELT_SIZE(&names[n]));
     }
 
+	//	计算hash数据的总长度
     len = 0;
 
     for (i = 0; i < size; i++) {
+		//	桶中没有元素
         if (test[i] == sizeof(void *)) {
             continue;
         }
 
+		//	行缓存对其，CPU读取内存不是一个一个字节，
+		//	而是以cacheline_size为单位，以行缓存对其，提高CPU读取效率
         test[i] = (u_short) (ngx_align(test[i], ngx_cacheline_size));
 
         len += test[i];
     }
 
     if (hinit->hash == NULL) {
+		//	在内存池中分配hash头及buckets数组(size个ngx_hash_elt_t*结构)
         hinit->hash = ngx_pcalloc(hinit->pool, sizeof(ngx_hash_wildcard_t)
                                              + size * sizeof(ngx_hash_elt_t *));
         if (hinit->hash == NULL) {
@@ -375,14 +421,17 @@ found:
         }
     }
 
+	//	接着分配elts，大小为len+ngx_cacheline_size，此处为什么+32？——下面要按32字节对齐
     elts = ngx_palloc(hinit->pool, len + ngx_cacheline_size);
     if (elts == NULL) {
         ngx_free(test);
         return NGX_ERROR;
     }
 
+	//	将elts地址按ngx_cacheline_size=32对齐
     elts = ngx_align_ptr(elts, ngx_cacheline_size);
 
+	//	将buckets数组与相应elts对应起来
     for (i = 0; i < size; i++) {
         if (test[i] == sizeof(void *)) {
             continue;
@@ -393,10 +442,12 @@ found:
 
     }
 
+	//	test数组置0
     for (i = 0; i < size; i++) {
         test[i] = 0;
     }
 
+	//	将传进来的每一个hash数据存入hash表
     for (n = 0; n < nelts; n++) {
         if (names[n].key.data == NULL) {
             continue;
@@ -413,6 +464,7 @@ found:
         test[key] = (u_short) (test[key] + NGX_HASH_ELT_SIZE(&names[n]));
     }
 
+	//	设置每个桶的结束元素为NULL
     for (i = 0; i < size; i++) {
         if (buckets[i] == NULL) {
             continue;
@@ -462,6 +514,15 @@ found:
 }
 
 
+/*
+ * hinit为初始化结构体指针，names为预加入哈希表数组，elts为预加入数组大小
+ * 特别要注意的是这里的key已经都是被预处理过的。
+ ***
+ * 例如：
+ * “*.abc.com”或者“.abc.com”被预处理完成以后，变成了“com.abc.”。
+ * 而“mail.xxx.*”则被预处理为“mail.xxx.”
+ */
+
 ngx_int_t
 ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
     ngx_uint_t nelts)
@@ -473,6 +534,7 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
     ngx_hash_init_t       h;
     ngx_hash_wildcard_t  *wdc;
 
+	//	初始化临时动态数组curr_names, curr_names是存放当前关键字的数组
     if (ngx_array_init(&curr_names, hinit->temp_pool, nelts,
                        sizeof(ngx_hash_key_t))
         != NGX_OK)
@@ -480,6 +542,7 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
         return NGX_ERROR;
     }
 
+	//	初始化临时动态数组next_names, next_names是存放关键字去掉后剩余关键字
     if (ngx_array_init(&next_names, hinit->temp_pool, nelts,
                        sizeof(ngx_hash_key_t))
         != NGX_OK)
@@ -495,7 +558,7 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
 #endif
 
         dot = 0;
-
+		//	查找 dot
         for (len = 0; len < names[n].key.len; len++) {
             if (names[n].key.data[len] == '.') {
                 dot = 1;
@@ -507,7 +570,7 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
         if (name == NULL) {
             return NGX_ERROR;
         }
-
+		//	将关键字dot以前的关键字放入curr_names
         name->key.len = len;
         name->key.data = names[n].key.data;
         name->key_hash = hinit->key(name->key.data, name->key.len);
@@ -525,7 +588,7 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
         }
 
         next_names.nelts = 0;
-
+		//	如果names[n] dot后还有剩余关键字，将剩余关键字放入next_names中
         if (names[n].key.len != len) {
             next_name = ngx_array_push(&next_names);
             if (next_name == NULL) {
@@ -543,7 +606,9 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
 #endif
         }
 
+		//	如果上面搜索到的关键字没有dot，从n+1遍历names，将关键字比它长的全部放入next_name
         for (i = n + 1; i < nelts; i++) {
+			//	前len个关键字相同
             if (ngx_strncmp(names[n].key.data, names[i].key.data, len) != 0) {
                 break;
             }
@@ -554,6 +619,9 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
             {
                 break;
             }
+
+			//	第i个name的前len个字符与第n个name的前len个字符相同
+			//  第i个name的第len个字符为dot
 
             next_name = ngx_array_push(&next_names);
             if (next_name == NULL) {
@@ -569,13 +637,15 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
             ngx_log_error(NGX_LOG_ALERT, hinit->pool->log, 0,
                           "wc3: \"%V\"", &next_name->key);
 #endif
-        }
+        }// for (i = n + 1; i < nelts; i++)  end
 
+		//	如果next_name非空
         if (next_names.nelts) {
 
             h = *hinit;
             h.hash = NULL;
 
+			//	递归，创建一个新的哈西表
             if (ngx_hash_wildcard_init(&h, (ngx_hash_key_t *) next_names.elts,
                                        next_names.nelts)
                 != NGX_OK)
@@ -585,17 +655,24 @@ ngx_hash_wildcard_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names,
 
             wdc = (ngx_hash_wildcard_t *) h.hash;
 
+			//	将用户value值放入新的hash表
+			//	当前字段已经达到末尾
             if (names[n].key.len == len) {
                 wdc->value = names[n].value;
             }
 
+			//	将后缀组成的下一级hash地址作为当前字段的value保存下来
+			//	2只有在后缀通配符的情况下才会出现
             name->value = (void *) ((uintptr_t) wdc | (dot ? 3 : 2));
 
         } else if (dot) {
-            name->value = (void *) ((uintptr_t) name->value | 1);
+        	//	只有一个，而且不是后缀通配符
+			name->value = (void *) ((uintptr_t) name->value | 1);
         }
     }
 
+	//	将最外层hash初始化
+	//	根据<当前字段,value>键值对建立hash
     if (ngx_hash_init(hinit, (ngx_hash_key_t *) curr_names.elts,
                       curr_names.nelts)
         != NGX_OK)

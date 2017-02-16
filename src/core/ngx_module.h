@@ -233,7 +233,7 @@
 
 #define NGX_MODULE_V1_PADDING  0, 0, 0, 0, 0, 0, 0, 0
 
-
+// 只涉及模块的初始化、退出以及对配置项的处理
 struct ngx_module_s {
     ngx_uint_t            ctx_index;
     ngx_uint_t            index;
@@ -246,8 +246,13 @@ struct ngx_module_s {
     ngx_uint_t            version;
     const char           *signature;
 
+	//	指向ngx_core_module_t、ngx_http_module_t、ngx_event_module_t、ngx_mail_conf_ctx_t
     void                 *ctx;
     ngx_command_t        *commands;
+	/*
+	 * NGX_CONF_MODULE: ngx_conf_module
+	 * NGX_CORE_MODULE: ngx_core_module、ngx_errlog_module、ngx_events_module、ngx_openssl_module、ngx_http_module、ngx_mail_module
+	*/
     ngx_uint_t            type;
 
     ngx_int_t           (*init_master)(ngx_log_t *log);
@@ -273,9 +278,9 @@ struct ngx_module_s {
 
 
 typedef struct {
-    ngx_str_t             name;
-    void               *(*create_conf)(ngx_cycle_t *cycle);
-    char               *(*init_conf)(ngx_cycle_t *cycle, void *conf);
+    ngx_str_t             name;	// 模块名称
+    void               *(*create_conf)(ngx_cycle_t *cycle);// 解析配置项前
+    char               *(*init_conf)(ngx_cycle_t *cycle, void *conf); // 解析配置项完成后
 } ngx_core_module_t;
 
 
