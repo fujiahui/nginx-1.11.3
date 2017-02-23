@@ -96,11 +96,13 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
     sigaddset(&set, ngx_signal_value(NGX_SHUTDOWN_SIGNAL));
     sigaddset(&set, ngx_signal_value(NGX_CHANGEBIN_SIGNAL));
 
+	//	屏蔽set中的信号集
     if (sigprocmask(SIG_BLOCK, &set, NULL) == -1) {
         ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
                       "sigprocmask() failed");
     }
 
+	//	清除其中的所有的信号
     sigemptyset(&set);
 
 
@@ -160,6 +162,10 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
 
         ngx_log_debug0(NGX_LOG_DEBUG_EVENT, cycle->log, 0, "sigsuspend");
 
+		//	set为空信号集 
+		// sigsuspend原子操作先恢复信号屏蔽字 然后使进程休眠
+		// 将进程的信号屏蔽字设置为由set指向的值
+		// 当sigsuspend返回时，又设置信号屏蔽字为调用sigsuspend之前的值
         sigsuspend(&set);
 
         ngx_time_update();
@@ -740,6 +746,7 @@ ngx_worker_process_cycle(ngx_cycle_t *cycle, void *data)
         if (ngx_exiting) {
             ngx_event_cancel_timers();
 
+			//	ngx_event_timer_rbtree是否为空
             if (ngx_event_timer_rbtree.root == ngx_event_timer_rbtree.sentinel)
             {
                 ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0, "exiting");
@@ -759,6 +766,7 @@ ngx_worker_process_cycle(ngx_cycle_t *cycle, void *data)
         }
 
         if (ngx_quit) {
+			//	优雅的关闭
             ngx_quit = 0;
             ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
                           "gracefully shutting down");
@@ -877,8 +885,10 @@ ngx_worker_process_init(ngx_cycle_t *cycle, ngx_int_t worker)
         }
     }
 
+	//	初始化信号集 清除其中所有信号
     sigemptyset(&set);
 
+	//	设置新的信号屏蔽字被set指向的信号集的值替代
     if (sigprocmask(SIG_SETMASK, &set, NULL) == -1) {
         ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
                       "sigprocmask() failed");
@@ -910,6 +920,7 @@ ngx_worker_process_init(ngx_cycle_t *cycle, ngx_int_t worker)
             continue;
         }
 
+		//	ngx_process_slot是当前worker的索引 保留channel[1]
         if (n == ngx_process_slot) {
             continue;
         }
@@ -918,12 +929,14 @@ ngx_worker_process_init(ngx_cycle_t *cycle, ngx_int_t worker)
             continue;
         }
 
+		//	关闭ngx_processes中其他socket pair中的channel[1] 因为不属于这个worker process
         if (close(ngx_processes[n].channel[1]) == -1) {
             ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
                           "close() channel failed");
         }
     }
 
+	//	worker process使用socket pair 中的第2个
     if (close(ngx_processes[ngx_process_slot].channel[0]) == -1) {
         ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
                       "close() channel failed");
