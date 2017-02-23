@@ -589,7 +589,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
     if (ccf->master && ccf->worker_processes > 1 && ecf->accept_mutex) {
         ngx_use_accept_mutex = 1;
         ngx_accept_mutex_held = 0;
-        ngx_accept_mutex_delay = ecf->accept_mutex_delay;
+        ngx_accept_mutex_delay = ecf->accept_mutex_delay;	//	配置文件中指定的最大延时
 
     } else {
         ngx_use_accept_mutex = 0;
@@ -618,13 +618,13 @@ ngx_event_process_init(ngx_cycle_t *cycle)
             continue;
         }
 
-        if (cycle->modules[m]->ctx_index != ecf->use) {
+        if (cycle->modules[m]->ctx_index != ecf->use) {	//	判断是否是配置文件指定use的event模型
             continue;
         }
 
         module = cycle->modules[m]->ctx;
 
-        if (module->actions.init(cycle, ngx_timer_resolution) != NGX_OK) {
+        if (module->actions.init(cycle, ngx_timer_resolution) != NGX_OK) {	//	调用ngx_epoll_init函数
             /* fatal */
             exit(2);
         }
@@ -689,7 +689,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
 #endif
 
     cycle->connections =
-        ngx_alloc(sizeof(ngx_connection_t) * cycle->connection_n, cycle->log);
+        ngx_alloc(sizeof(ngx_connection_t) * cycle->connection_n, cycle->log);	//	连接池
     if (cycle->connections == NULL) {
         return NGX_ERROR;
     }
@@ -697,7 +697,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
     c = cycle->connections;
 
     cycle->read_events = ngx_alloc(sizeof(ngx_event_t) * cycle->connection_n,
-                                   cycle->log);
+                                   cycle->log);	//	读事件连接池
     if (cycle->read_events == NULL) {
         return NGX_ERROR;
     }
@@ -709,7 +709,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
     }
 
     cycle->write_events = ngx_alloc(sizeof(ngx_event_t) * cycle->connection_n,
-                                    cycle->log);
+                                    cycle->log);	// 写事件连接池
     if (cycle->write_events == NULL) {
         return NGX_ERROR;
     }
@@ -725,7 +725,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
     do {
         i--;
 
-        c[i].data = next;
+        c[i].data = next;	//	data成员作为链表的next指针串联成链表，为空闲连接链表做准备
         c[i].read = &cycle->read_events[i];
         c[i].write = &cycle->write_events[i];
         c[i].fd = (ngx_socket_t) -1;
@@ -789,7 +789,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
         }
 
 #if (NGX_WIN32)
-
+/*
         if (ngx_event_flags & NGX_USE_IOCP_EVENT) {
             ngx_iocp_conf_t  *iocpcf;
 
@@ -823,7 +823,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
                 return NGX_ERROR;
             }
         }
-
+*/
 #else
 
         rev->handler = (c->type == SOCK_STREAM) ? ngx_event_accept
