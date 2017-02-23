@@ -23,12 +23,12 @@
 static ngx_uint_t        slot;
 static ngx_atomic_t      ngx_time_lock;
 
-volatile ngx_msec_t      ngx_current_msec;
+volatile ngx_msec_t      ngx_current_msec;	//	当前时间的毫秒数
 volatile ngx_time_t     *ngx_cached_time;
-volatile ngx_str_t       ngx_cached_err_log_time;
-volatile ngx_str_t       ngx_cached_http_time;
-volatile ngx_str_t       ngx_cached_http_log_time;
-volatile ngx_str_t       ngx_cached_http_log_iso8601;
+volatile ngx_str_t       ngx_cached_err_log_time;	//	error_log的当前时间字符串，类似格式'1970/09/28 12:00:00'
+volatile ngx_str_t       ngx_cached_http_time;	//	用于HTTP相关的当前时间字符串，格式:'Mon, 28 Sep 1970 06:00:00 GMT'
+volatile ngx_str_t       ngx_cached_http_log_time;	//	记录HTTP日志的当前时间字符串，格式: '28/Sep/1970:12:00:00 +0600'
+volatile ngx_str_t       ngx_cached_http_log_iso8601;	//	ISO 8601
 volatile ngx_str_t       ngx_cached_syslog_time;
 
 #if !(NGX_WIN32)
@@ -88,7 +88,7 @@ ngx_time_update(void)
         return;
     }
 
-    ngx_gettimeofday(&tv);
+    ngx_gettimeofday(&tv);	//	系统时间
 
     sec = tv.tv_sec;
     msec = tv.tv_usec / 1000;

@@ -705,7 +705,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
     rev = cycle->read_events;
     for (i = 0; i < cycle->connection_n; i++) {
         rev[i].closed = 1;
-        rev[i].instance = 1;
+        rev[i].instance = 1;	//	每个event的instance初始化为1
     }
 
     cycle->write_events = ngx_alloc(sizeof(ngx_event_t) * cycle->connection_n,
