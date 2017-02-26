@@ -2988,7 +2988,13 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
             if (mconf == NULL) {
                 return NGX_CONF_ERROR;
             }
-
+			/* 第一个HTTP模块就是ngx_http_core_module
+			 * 在create_srv_conf方法中将会生成关键的ngx_http_core_srv_conf_t配置结构体
+			 * 这个结构体对应中当前正在解析的server块
+			 *
+			 * 这时会将ngx_http_core_srv_conf_t添加到
+			 * 全局的ngx_http_core_main_conf结构体的servers动态数组
+			*/
             ctx->srv_conf[cf->cycle->modules[i]->ctx_index] = mconf;
         }
 
@@ -3024,7 +3030,7 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     pcf = *cf;
     cf->ctx = ctx;
     cf->cmd_type = NGX_HTTP_SRV_CONF;
-
+	//	解析当前server块内的所有配置项
     rv = ngx_conf_parse(cf, NULL);
 
     *cf = pcf;
@@ -3194,7 +3200,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
             }
         }
     }
-
+	//	pclcf是Server A块内产生的ngx_http_core_loc_conf_t关联起来的
     pclcf = pctx->loc_conf[ngx_http_core_module.ctx_index];
 
     if (cf->cmd_type == NGX_HTTP_LOC_CONF) {

@@ -197,12 +197,14 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
     ngx_msec_t  timer, delta;
 
     if (ngx_timer_resolution) {
-        timer = NGX_TIMER_INFINITE;
-        flags = 0;
+		//	时间精度为ngx_timer_resolution毫秒
+        timer = NGX_TIMER_INFINITE;	//	ngx_process_events检测事件时不要等待
+        flags = 0;	//	ngx_process_events没有任何附加动作
 
     } else {
-        timer = ngx_event_find_timer();
-        flags = NGX_UPDATE_TIME;
+    	//	timer告诉ngx_process_events方法在检测事件时如果没有任何事件，最多等待timer毫秒返回
+        timer = ngx_event_find_timer();	//	获取最近一个将要触发的事件距离现在还有多少毫秒
+        flags = NGX_UPDATE_TIME;	//	告诉ngx_process_events方法更新缓存的事件
 
 #if (NGX_WIN32)
 
@@ -216,7 +218,7 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
     }
 
     if (ngx_use_accept_mutex) {
-        if (ngx_accept_disabled > 0) {
+        if (ngx_accept_disabled > 0) {	//	为正数时，当前进程不再接收新连接事件
             ngx_accept_disabled--;
 
         } else {
@@ -225,12 +227,18 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
             }
 
             if (ngx_accept_mutex_held) {
-                flags |= NGX_POST_EVENTS;
+                flags |= NGX_POST_EVENTS;	//	NGX_POST_EVENTS表示不会立刻调用事件的handler回调方法
 
             } else {
                 if (timer == NGX_TIMER_INFINITE
                     || timer > ngx_accept_mutex_delay)
                 {
+                	/*
+                	 * 如果没有获取到accept_mutex锁，则意味着既不能让当前worker进程
+                	 * 频繁地试图抢锁，也不能让它太长时间再去抢锁
+                	 *
+                	 * 在没有新事件时，至少会等待ngx_accept_mutex_delay毫秒再去抢锁
+					*/
                     timer = ngx_accept_mutex_delay;
                 }
             }
@@ -248,11 +256,12 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
 
     ngx_event_process_posted(cycle, &ngx_posted_accept_events);
 
-    if (ngx_accept_mutex_held) {
+    if (ngx_accept_mutex_held) {	//	表示当前获得了accept_mutex锁 需要释放
         ngx_shmtx_unlock(&ngx_accept_mutex);
     }
 
     if (delta) {
+		//	处理定时器事件
         ngx_event_expire_timers();
     }
 

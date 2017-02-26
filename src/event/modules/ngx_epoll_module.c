@@ -254,6 +254,7 @@ ngx_epoll_aio_init(ngx_cycle_t *cycle, ngx_epoll_conf_t *epcf)
 #if (NGX_HAVE_SYS_EVENTFD_H)
     ngx_eventfd = eventfd(0, 0);
 #else
+	//	使用Linux中的第323个系统调用获取一个描述符句柄
     ngx_eventfd = syscall(SYS_eventfd, 0);
 #endif
 
@@ -269,13 +270,13 @@ ngx_epoll_aio_init(ngx_cycle_t *cycle, ngx_epoll_conf_t *epcf)
 
     n = 1;
 
-    if (ioctl(ngx_eventfd, FIONBIO, &n) == -1) {
+    if (ioctl(ngx_eventfd, FIONBIO, &n) == -1) {	//	设置成无阻塞
         ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno,
                       "ioctl(eventfd, FIONBIO) failed");
         goto failed;
     }
 
-    if (io_setup(epcf->aio_requests, &ngx_aio_ctx) == -1) {
+    if (io_setup(epcf->aio_requests, &ngx_aio_ctx) == -1) {	//	初始化文件异步IO的上下文
         ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_errno,
                       "io_setup() failed");
         goto failed;
@@ -966,7 +967,7 @@ ngx_epoll_eventfd_handler(ngx_event_t *ev)
 
     ngx_log_debug0(NGX_LOG_DEBUG_EVENT, ev->log, 0, "eventfd handler");
 
-    n = read(ngx_eventfd, &ready, 8);
+    n = read(ngx_eventfd, &ready, 8);	//	ready时获取的已完成的数目
 
     err = ngx_errno;
 
@@ -991,7 +992,7 @@ ngx_epoll_eventfd_handler(ngx_event_t *ev)
     ts.tv_nsec = 0;
 
     while (ready) {
-
+		//	获取已经完成的异步IO事件
         events = io_getevents(ngx_aio_ctx, 1, 64, event, &ts);
 
         ngx_log_debug1(NGX_LOG_DEBUG_EVENT, ev->log, 0,
@@ -1015,7 +1016,7 @@ ngx_epoll_eventfd_handler(ngx_event_t *ev)
 
                 aio = e->data;
                 aio->res = event[i].res;
-
+				//	将已经完成的IO事件添加到ngx_posted_events中延后执行
                 ngx_post_event(e, &ngx_posted_events);
             }
 

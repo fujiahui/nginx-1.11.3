@@ -183,8 +183,9 @@ typedef struct {
     ngx_array_t                 server_names;
 
     /* server ctx */
-    ngx_http_conf_ctx_t        *ctx;
-
+    ngx_http_conf_ctx_t        *ctx;	//	指向当前server块所属的ngx_http_conf_ctx_t结构体
+	//	当前server块的虚拟主机名，如果存在的话，则会与HTTP请求中的host头部做匹配
+	//	匹配上后再由当前ngx_http_core_srv_conf_t处理请求
     ngx_str_t                   server_name;
 
     size_t                      connection_pool_size;
@@ -311,6 +312,7 @@ typedef struct {
 
 
 struct ngx_http_core_loc_conf_s {
+	//	locatoin的名称，即nginx.conf中location后的表达式
     ngx_str_t     name;          /* location name */
 
 #if (NGX_PCRE)
@@ -336,7 +338,10 @@ struct ngx_http_core_loc_conf_s {
 #if (NGX_PCRE)
     ngx_http_core_loc_conf_t       **regex_locations;
 #endif
-
+	/*
+	 * 指向所属location块内ngx_http_conf_ctx_t结构体中的loc_conf指针数组
+	 * 它保存着当前location块内所有HTTP模块create_loc_conf方法产生的结构体指针
+	*/
     /* pointer to the modules' loc_conf */
     void        **loc_conf;
 
@@ -444,7 +449,10 @@ struct ngx_http_core_loc_conf_s {
 
     ngx_uint_t    types_hash_max_size;
     ngx_uint_t    types_hash_bucket_size;
-
+	/* 将同一个server块内多个表达式location块的ngx_http_core_loc_conf_t结构体
+	 * 以双向链表方式组织起来
+	 * 该locations指针将指向ngx_http_location_queue_t结构体
+	*/
     ngx_queue_t  *locations;
 
 #if 0
@@ -455,8 +463,15 @@ struct ngx_http_core_loc_conf_s {
 
 typedef struct {
     ngx_queue_t                      queue;
+	/* 如果location中的字符串可以精确匹配(包括正则表达式)
+	 * exact将指向对应的ngx_http_core_loc_conf_t结构体，否则为NULL
+	*/
     ngx_http_core_loc_conf_t        *exact;
+	/* 如果location中的字符串无法精确匹配(包括自定义的通配符)
+	 * inclusive将指向对应的ngx_http_core_loc_conf_t结构体，否则为NULL
+	*/
     ngx_http_core_loc_conf_t        *inclusive;
+	/* 指向location的名称 */
     ngx_str_t                       *name;
     u_char                          *file_name;
     ngx_uint_t                       line;

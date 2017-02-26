@@ -424,7 +424,7 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
                 }
             }
 
-            rv = cmd->set(cf, cmd, conf);
+            rv = cmd->set(cf, cmd, conf);	//调用ngx_command_t 的set函数
 
             if (rv == NGX_CONF_OK) {
                 return NGX_OK;

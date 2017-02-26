@@ -95,6 +95,10 @@ ngx_file_aio_read(ngx_file_t *file, u_char *buf, size_t size, off_t offset,
 
     ngx_memzero(&aio->aiocb, sizeof(struct iocb));
 
+	/*
+	 * aio_data已经设置为这个ngx_event_t事件指针
+	 * 从io_getevents方法获取的io_event对象中的data也是这个指针
+	*/
     aio->aiocb.aio_data = (uint64_t) (uintptr_t) ev;
     aio->aiocb.aio_lio_opcode = IOCB_CMD_PREAD;
     aio->aiocb.aio_fildes = file->fd;
@@ -104,6 +108,7 @@ ngx_file_aio_read(ngx_file_t *file, u_char *buf, size_t size, off_t offset,
     aio->aiocb.aio_flags = IOCB_FLAG_RESFD;
     aio->aiocb.aio_resfd = ngx_eventfd;
 
+	//	在延后执行的队列ngx_posted_events中调用ngx_file_aio_event_handler方法
     ev->handler = ngx_file_aio_event_handler;
 
     piocb[0] = &aio->aiocb;
@@ -117,7 +122,7 @@ ngx_file_aio_read(ngx_file_t *file, u_char *buf, size_t size, off_t offset,
     }
 
     err = ngx_errno;
-
+	//	系统调用失败
     if (err == NGX_EAGAIN) {
         return ngx_read_file(file, buf, size, offset);
     }

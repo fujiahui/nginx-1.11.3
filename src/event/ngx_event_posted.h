@@ -13,7 +13,11 @@
 #include <ngx_core.h>
 #include <ngx_event.h>
 
-
+/*
+ * 线程安全地向queue事件队列中添加事件ev
+ * ev将插入到事件队列的首部
+ *
+**/
 #define ngx_post_event(ev, q)                                                 \
                                                                               \
     if (!(ev)->posted) {                                                      \
@@ -27,7 +31,10 @@
                        "update posted event %p", ev);                         \
     }
 
-
+/*
+ * 将事件ev从所属的post事件队列中删除
+ *
+**/
 #define ngx_delete_posted_event(ev)                                           \
                                                                               \
     (ev)->posted = 0;                                                         \
