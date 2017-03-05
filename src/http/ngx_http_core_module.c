@@ -3086,15 +3086,16 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     ngx_http_conf_ctx_t       *ctx, *pctx;
     ngx_http_core_loc_conf_t  *clcf, *pclcf;
 
+	//	创建当前location块的上下文ctx
     ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_conf_ctx_t));
     if (ctx == NULL) {
         return NGX_CONF_ERROR;
     }
 
-    pctx = cf->ctx;
+    pctx = cf->ctx;	//	上一级server 块的ctx
     ctx->main_conf = pctx->main_conf;
     ctx->srv_conf = pctx->srv_conf;
-
+	//	申请location块的loc数组
     ctx->loc_conf = ngx_pcalloc(cf->pool, sizeof(void *) * ngx_http_max_module);
     if (ctx->loc_conf == NULL) {
         return NGX_CONF_ERROR;
@@ -3106,7 +3107,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
         }
 
         module = cf->cycle->modules[i]->ctx;
-
+		//	调用所有http模块create_loc_conf方法创建ngx_http_core_loc_conf_t
         if (module->create_loc_conf) {
             ctx->loc_conf[cf->cycle->modules[i]->ctx_index] =
                                                    module->create_loc_conf(cf);
@@ -3115,7 +3116,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
             }
         }
     }
-
+	//	ngx_http_core_module模块的ngx_http_core_loc_conf_t
     clcf = ctx->loc_conf[ngx_http_core_module.ctx_index];
     clcf->loc_conf = ctx->loc_conf;
 

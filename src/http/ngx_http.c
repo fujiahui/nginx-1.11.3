@@ -133,7 +133,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     /* the main http context */
-
+	//	当前http的上下文结构体ctx
     ctx = ngx_pcalloc(cf->pool, sizeof(ngx_http_conf_ctx_t));
     if (ctx == NULL) {
         return NGX_CONF_ERROR;
@@ -244,8 +244,9 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
      * init http{} main_conf's, merge the server{}s' srv_conf's
      * and its location{}s' loc_conf's
      */
-
+	//	cmcf就是该HTTP块下全局的ngx_http_core_main_conf_t结构体
     cmcf = ctx->main_conf[ngx_http_core_module.ctx_index];
+	// cscfp指向保存所有ngx_http_core_srv_conf_t结构体指针的servers动态数组的第一个元素
     cscfp = cmcf->servers.elts;
 
     for (m = 0; cf->cycle->modules[m]; m++) {
@@ -264,7 +265,13 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                 goto failed;
             }
         }
-
+		//	合并main、svr级别的的server、location相关配置项
+		/*
+		 * cf:  
+		 * cmcf: ngx_http_core_module的ngx_http_core_main_conf_t,包含一个servers成员
+		 * module: 当前http模块ngx_http_module_t
+		 * mi: ctx_index当前的http模块索引号
+		*/
         rv = ngx_http_merge_servers(cf, cmcf, module, mi);
         if (rv != NGX_CONF_OK) {
             goto failed;
@@ -273,15 +280,19 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
 
     /* create location trees */
-
+	//	遍历http块下的所有server块
     for (s = 0; s < cmcf->servers.nelts; s++) {
-
+		/*
+		 * clcf是server块下的ngx_http_core_loc_conf_t结构体
+		 * 
+		 *
+		*/
         clcf = cscfp[s]->ctx->loc_conf[ngx_http_core_module.ctx_index];
 
         if (ngx_http_init_locations(cf, cscfp[s], clcf) != NGX_OK) {
             return NGX_CONF_ERROR;
         }
-
+		//	构建静态二叉树
         if (ngx_http_init_static_location_trees(cf, clcf) != NGX_OK) {
             return NGX_CONF_ERROR;
         }
@@ -571,7 +582,7 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
     ctx = (ngx_http_conf_ctx_t *) cf->ctx;
     saved = *ctx;
     rv = NGX_CONF_OK;
-
+	//	遍历server块下对应的ngx_http_core_srv_conf_t
     for (s = 0; s < cmcf->servers.nelts; s++) {
 
         /* merge the server{}s' srv_conf's */
@@ -650,7 +661,7 @@ ngx_http_merge_locations(ngx_conf_t *cf, ngx_queue_t *locations,
         if (rv != NGX_CONF_OK) {
             return rv;
         }
-
+		//	由于location{}可以嵌套location{}
         rv = ngx_http_merge_locations(cf, clcf->locations, clcf->loc_conf,
                                       module, ctx_index);
         if (rv != NGX_CONF_OK) {
@@ -683,7 +694,11 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     if (locations == NULL) {
         return NGX_OK;
     }
-
+	/* 按照类型排序location，排序完后的队列:(exact_match 或 inclusive) 
+	 * (排序好的，如果某个exact_match名字和inclusive location相同，exact_match排在前面)*/
+	//	对locations双向链表排序
+	/*|  regex（未排序）| named(排序好的)  |  noname（未排序）*/
+	/*前缀匹配|绝对匹配--->正则匹配--->命名--> 未命名*/
     ngx_queue_sort(locations, ngx_http_cmp_locations);
 
     named = NULL;
@@ -692,7 +707,7 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     regex = NULL;
     r = 0;
 #endif
-
+	//	主要是找到regex正则起始处 和 named的起始处
     for (q = ngx_queue_head(locations);
          q != ngx_queue_sentinel(locations);
          q = ngx_queue_next(q))
@@ -700,13 +715,13 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
         lq = (ngx_http_location_queue_t *) q;
 
         clcf = lq->exact ? lq->exact : lq->inclusive;
-
+		//	递归调用
         if (ngx_http_init_locations(cf, NULL, clcf) != NGX_OK) {
             return NGX_ERROR;
         }
 
 #if (NGX_PCRE)
-
+		//	regex会设置正则的起始第一个节点
         if (clcf->regex) {
             r++;
 
@@ -718,7 +733,7 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
         }
 
 #endif
-
+		//	named会设置为命名的起始第一个节点
         if (clcf->named) {
             n++;
 
@@ -728,25 +743,27 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
 
             continue;
         }
-
+		//	找到未命名直接退出循环
         if (clcf->noname) {
             break;
         }
     }
 
+	//	循环结束后, q很可能是noname起始第一个节点
+
     if (q != ngx_queue_sentinel(locations)) {
         ngx_queue_split(locations, q, &tail);
     }
-
+	/* 如果有named location，将它们保存在所属server的named_locations数组中 */
     if (named) {
         clcfp = ngx_palloc(cf->pool,
                            (n + 1) * sizeof(ngx_http_core_loc_conf_t *));
         if (clcfp == NULL) {
             return NGX_ERROR;
         }
-
+		//	named_locations是数组
         cscf->named_locations = clcfp;
-
+		//	保存所有的named
         for (q = named;
              q != ngx_queue_sentinel(locations);
              q = ngx_queue_next(q))
@@ -757,7 +774,7 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
         }
 
         *clcfp = NULL;
-
+		//	切出named的链表元素
         ngx_queue_split(locations, named, &tail);
     }
 
@@ -770,7 +787,7 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
         if (clcfp == NULL) {
             return NGX_ERROR;
         }
-
+		// pclcf是server块下的ngx_http_core_loc_conf_t结构体
         pclcf->regex_locations = clcfp;
 
         for (q = regex;
@@ -788,7 +805,7 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     }
 
 #endif
-
+	//	最后的locations只剩下 '前缀匹配|绝对匹配'
     return NGX_OK;
 }
 

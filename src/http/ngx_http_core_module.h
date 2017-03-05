@@ -169,7 +169,7 @@ typedef struct {
     ngx_uint_t                 variables_hash_bucket_size;
 
     ngx_hash_keys_arrays_t    *variables_keys;
-
+	//	存放着HTTP{}配置块下监听的所有ngx_http_conf_port_t端口
     ngx_array_t               *ports;
 
     ngx_uint_t                 try_files;       /* unsigned  try_files:1 */
@@ -276,8 +276,13 @@ typedef struct {
 
 
 typedef struct {
-    ngx_http_listen_opt_t      opt;
+    ngx_http_listen_opt_t      opt;	//	监听套接字的属性
 
+	/*
+	 * 用于加速寻找到对应监听端口上的新连接，
+	 * 确定到底使用哪个server{}虚拟主机下的配置来处理它
+	 * 散列表的值就是ngx_http_core_srv_conf_t结构体的地址
+	*/
     ngx_hash_t                 hash;
     ngx_hash_wildcard_t       *wc_head;
     ngx_hash_wildcard_t       *wc_tail;
@@ -333,7 +338,7 @@ struct ngx_http_core_loc_conf_s {
     unsigned      gzip_disable_degradation:2;
 #endif
 #endif
-
+	//	静态二叉树
     ngx_http_location_tree_node_t   *static_locations;
 #if (NGX_PCRE)
     ngx_http_core_loc_conf_t       **regex_locations;
@@ -489,7 +494,7 @@ struct ngx_http_location_tree_node_s {
 
     u_char                           auto_redirect;
     u_char                           len;
-    u_char                           name[1];
+    u_char                           name[1];	//	指向location对应的URI匹配表达式
 };
 
 
