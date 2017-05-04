@@ -293,6 +293,7 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
 
 	//	nelts是names数组中(实际)元素的个数
     for (n = 0; n < nelts; n++) {
+		/* 之所以NGX_HASH_ELT_SIZE(&names[n]) 后面需要加上sizeof(void *)，主要是每个桶都用一个值位NULL的void*指针来标记结束 */
         if (hinit->bucket_size < NGX_HASH_ELT_SIZE(&names[n]) + sizeof(void *))
         {
         	//	有任何一个元素，槽的大小不够为该元素分配空间，则退出
@@ -314,6 +315,9 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
     bucket_size = hinit->bucket_size - sizeof(void *);
 
 	//	最少需要start个桶
+	// 一个桶可以存放ngx_elt_t元素个数为 bucket_size / (2 * sizeof(void *))
+	// nelts是当前的元素个数
+	// 所以start 就是最少需要的桶个数
     start = nelts / (bucket_size / (2 * sizeof(void *)));
     start = start ? start : 1;
 

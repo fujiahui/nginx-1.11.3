@@ -3016,7 +3016,10 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 
 
     cmcf = ctx->main_conf[ngx_http_core_module.ctx_index];
-
+	/*
+	 * 这时会将ngx_http_core_srv_conf_t添加到
+	 * 全局的ngx_http_core_main_conf结构体的servers动态数组
+	**/
     cscfp = ngx_array_push(&cmcf->servers);
     if (cscfp == NULL) {
         return NGX_CONF_ERROR;

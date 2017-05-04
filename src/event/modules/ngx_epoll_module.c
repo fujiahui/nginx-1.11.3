@@ -576,6 +576,7 @@ ngx_epoll_done(ngx_cycle_t *cycle)
 }
 
 
+//	水平触发模式
 static ngx_int_t
 ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
 {
@@ -698,7 +699,7 @@ ngx_epoll_del_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
     return NGX_OK;
 }
 
-
+// 边缘触发模式
 static ngx_int_t
 ngx_epoll_add_connection(ngx_connection_t *c)
 {
