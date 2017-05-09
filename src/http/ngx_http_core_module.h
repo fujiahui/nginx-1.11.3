@@ -110,16 +110,28 @@ typedef enum {
     NGX_HTTP_POST_READ_PHASE = 0,
 
     NGX_HTTP_SERVER_REWRITE_PHASE,
-
+	/*
+	 * NGX_HTTP_FIND_CONFIG_PHASE
+	 * 根据请求的URI寻找匹配的location表达式
+	 * 这个阶段只能由ngx_http_core_module模块实现
+	*/
     NGX_HTTP_FIND_CONFIG_PHASE,
     NGX_HTTP_REWRITE_PHASE,
     NGX_HTTP_POST_REWRITE_PHASE,
-
+	/*
+	 * NGX_HTTP_POST_REWRITE_PHASE
+	 * 控制死循环
+	*/
     NGX_HTTP_PREACCESS_PHASE,
 
     NGX_HTTP_ACCESS_PHASE,
-    NGX_HTTP_POST_ACCESS_PHASE,
-
+    NGX_HTTP_POST_ACCESS_PHASE,	//	NGX_HTTP_FORBIDDEN or	NGX_HTTP_UNAUTHORIZER
+	/*
+	 * NGX_HTTP_TRY_FILES_PHASE
+	 * try_files配置项设立
+	 * 当HTTP请求访问静态文件资源时，try_files配置项可以使这个请求顺序地访问多个静态文件资源
+	 * 如果某一次访问失败 则继续访问try_files配置项中指定的下一个静态资源
+	*/
     NGX_HTTP_TRY_FILES_PHASE,
     NGX_HTTP_CONTENT_PHASE,
 
@@ -132,15 +144,24 @@ typedef ngx_int_t (*ngx_http_phase_handler_pt)(ngx_http_request_t *r,
     ngx_http_phase_handler_t *ph);
 
 struct ngx_http_phase_handler_s {
-    ngx_http_phase_handler_pt  checker;
+    ngx_http_phase_handler_pt  checker;	//	在checker方法中调用handler
     ngx_http_handler_pt        handler;
-    ngx_uint_t                 next;
+    ngx_uint_t                 next;	//	将要执行的下一个HTTP阶段的序号
 };
 
 
 typedef struct {
+	/*
+	 * handlers是由ngx_http_phase_handler_t构成的数组首地址
+	*/
     ngx_http_phase_handler_t  *handlers;
+	/*
+	 * NGX_HTTP_SERVER_REWRITE_PHASE 阶段第一个ngx_http_phase_handler_t处理方法在handlers中的序列号
+	*/
     ngx_uint_t                 server_rewrite_index;
+	/*
+	 * NGX_HTTP_RWRITE_PHASE 阶段第一个ngx_http_phase_handler_t处理方法在handlers中的序列号
+	*/
     ngx_uint_t                 location_rewrite_index;
 } ngx_http_phase_engine_t;
 
@@ -173,7 +194,10 @@ typedef struct {
     ngx_array_t               *ports;
 
     ngx_uint_t                 try_files;       /* unsigned  try_files:1 */
-
+	/*
+	 * 用于在HTTP框架初始化时帮助各个HTTP模块在任意阶段添加HTTP处理方法
+	 * HTTP模块可以在ngx_http_module_t接口的postconfiguration方法中将自定义的方法添加到handler动态数组中
+	*/
     ngx_http_phase_t           phases[NGX_HTTP_LOG_PHASE + 1];
 } ngx_http_core_main_conf_t;
 
@@ -392,6 +416,9 @@ struct ngx_http_core_loc_conf_s {
 
     ngx_uint_t    keepalive_requests;      /* keepalive_requests */
     ngx_uint_t    keepalive_disable;       /* keepalive_disable */
+	/*
+	 * 仅可以取值为NGX_HTTP_SATISFY 、NGX_HTTP_SATISFY_ANY
+	**/
     ngx_uint_t    satisfy;                 /* satisfy */
     ngx_uint_t    lingering_close;         /* lingering_close */
     ngx_uint_t    if_modified_since;       /* if_modified_since */

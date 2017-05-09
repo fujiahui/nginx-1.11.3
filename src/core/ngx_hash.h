@@ -61,7 +61,6 @@ typedef struct {
 
 
 typedef struct {	//	hash初始化结构
-	//	指向普通的完全匹配散列表
     ngx_hash_t       *hash;	//	指向待初始化的hash结构
     ngx_hash_key_pt   key;	//	hash函数指针
 

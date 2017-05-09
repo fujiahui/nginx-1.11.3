@@ -69,7 +69,7 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
         return NULL;
     }
     pool->log = log;
-
+	// 配置上下文
     cycle = ngx_pcalloc(pool, sizeof(ngx_cycle_t));
     if (cycle == NULL) {
         ngx_destroy_pool(pool);
@@ -217,14 +217,19 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
         return NULL;
     }
 
-
+	// 处理core模块，cycle->conf_ctx用于存放所有CORE模块配置项
     for (i = 0; cycle->modules[i]; i++) {
         if (cycle->modules[i]->type != NGX_CORE_MODULE) {
             continue;
         }
 
         module = cycle->modules[i]->ctx;
-
+		/*
+		 * 只有ngx_core_module有create_conf回调函数
+		 * 这个会调用函数会创建ngx_core_conf_t结构
+		*/
+		// 用于存储整个配置文件main scope范围内的信息，
+		// 比如worker_processes，worker_cpu_affinity等
         if (module->create_conf) {
             rv = module->create_conf(cycle);
             if (rv == NULL) {
@@ -241,6 +246,7 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
 
     ngx_memzero(&conf, sizeof(ngx_conf_t));
     /* STUB: init array ? */
+	// conf表示当前解析到的配置命令上下文，包括命令，命令参数等
     conf.args = ngx_array_create(pool, 10, sizeof(ngx_str_t));
     if (conf.args == NULL) {
         ngx_destroy_pool(pool);
@@ -254,23 +260,23 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
     }
 
 
-    conf.ctx = cycle->conf_ctx;
+    conf.ctx = cycle->conf_ctx; // 指向解析出来信息的存放地址
     conf.cycle = cycle;
     conf.pool = pool;
     conf.log = log;
-    conf.module_type = NGX_CORE_MODULE;
-    conf.cmd_type = NGX_MAIN_CONF;
+    conf.module_type = NGX_CORE_MODULE; // 表示将要解析模块的类型
+    conf.cmd_type = NGX_MAIN_CONF; // 表示将要解析的指令的类型
 
 #if 0
     log->log_level = NGX_LOG_DEBUG_ALL;
 #endif
-
+	// nginx启动时 传进来的参数解析
     if (ngx_conf_param(&conf) != NGX_CONF_OK) {
         environ = senv;
         ngx_destroy_cycle_pools(&conf);
         return NULL;
     }
-
+	// 真正开始解析配置文件中的每个命令
     if (ngx_conf_parse(&conf, &cycle->conf_file) != NGX_CONF_OK) {
         environ = senv;
         ngx_destroy_cycle_pools(&conf);
@@ -281,7 +287,11 @@ ngx_init_cycle(ngx_cycle_t *old_cycle)
         ngx_log_stderr(0, "the configuration file %s syntax is ok",
                        cycle->conf_file.data);
     }
-
+	/*
+	 * 初始化所有core module模块的config结构。调用ngx_core_module_t的init_conf
+	 * 在所有core module中，只有ngx_core_module有init_conf回调
+	 * 用于对ngx_core_conf_t中没有配置的字段设置默认值
+	*/
     for (i = 0; cycle->modules[i]; i++) {
         if (cycle->modules[i]->type != NGX_CORE_MODULE) {
             continue;

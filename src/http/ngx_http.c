@@ -307,7 +307,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-
+	//	调用postconfiguration方法向这7个阶段中添加处理方法
     for (m = 0; cf->cycle->modules[m]; m++) {
         if (cf->cycle->modules[m]->type != NGX_HTTP_MODULE) {
             continue;
@@ -358,48 +358,49 @@ failed:
 static ngx_int_t
 ngx_http_init_phases(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
 {
+	//	在接收到完整HTTP头部后处理的HTTP请求
     if (ngx_array_init(&cmcf->phases[NGX_HTTP_POST_READ_PHASE].handlers,
                        cf->pool, 1, sizeof(ngx_http_handler_pt))
         != NGX_OK)
     {
         return NGX_ERROR;
     }
-
+	//	在将请求的URI寻找匹配的location之前，修改请求的URI是一个独立HTTP阶段
     if (ngx_array_init(&cmcf->phases[NGX_HTTP_SERVER_REWRITE_PHASE].handlers,
                        cf->pool, 1, sizeof(ngx_http_handler_pt))
         != NGX_OK)
     {
         return NGX_ERROR;
     }
-
+	//	在NGX_HTTP_FIND_CONFIG_PHASE阶段寻找到匹配的location之后再修改请求URI
     if (ngx_array_init(&cmcf->phases[NGX_HTTP_REWRITE_PHASE].handlers,
                        cf->pool, 1, sizeof(ngx_http_handler_pt))
         != NGX_OK)
     {
         return NGX_ERROR;
     }
-
+	//	处理NGX_HTTP_ACCESS_PHASE之前，HTTP模块可以介入的处理阶段
     if (ngx_array_init(&cmcf->phases[NGX_HTTP_PREACCESS_PHASE].handlers,
                        cf->pool, 1, sizeof(ngx_http_handler_pt))
         != NGX_OK)
     {
         return NGX_ERROR;
     }
-
+	//	这个阶段用于让HTTP模块判断是否允许这个请求访问NGINX服务器
     if (ngx_array_init(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers,
                        cf->pool, 2, sizeof(ngx_http_handler_pt))
         != NGX_OK)
     {
         return NGX_ERROR;
     }
-
+	//	用于处理HTTP请求内容阶段
     if (ngx_array_init(&cmcf->phases[NGX_HTTP_CONTENT_PHASE].handlers,
                        cf->pool, 4, sizeof(ngx_http_handler_pt))
         != NGX_OK)
     {
         return NGX_ERROR;
     }
-
+	//	处理完请求后记录日志的阶段。ngx_http_log_module模块就在这个阶段中加入一个handler处理方法
     if (ngx_array_init(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers,
                        cf->pool, 1, sizeof(ngx_http_handler_pt))
         != NGX_OK)

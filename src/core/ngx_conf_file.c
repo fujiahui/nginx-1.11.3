@@ -100,6 +100,7 @@ ngx_conf_param(ngx_conf_t *cf)
 char *
 ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
 {
+	/* http://www.cnblogs.com/chengxuyuancc/p/3792258.html */
     char             *rv;
     u_char           *p;
     off_t             size;
@@ -109,9 +110,15 @@ ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
     ngx_conf_file_t  *prev, conf_file;
     ngx_conf_dump_t  *cd;
     enum {
-        parse_file = 0,
-        parse_block,
-        parse_param
+		// 状态:配置文件已经打开,文件将要被解析.用于新打开一个配置文件,
+		// 或者解析过程中遇到include指令时候,也将以这种状态调用ngx_conf_parse函数
+        parse_file = 0, // 正要开始解析一个配置文件
+        
+        // 状态:配置文件已经打开,且已经进行了部分解析.
+        parse_block, // 正要解析一个复杂配置项的值
+        
+        // 状态:在命令行中遇到-g参数,即处在这种状态
+        parse_param // 即将对命令行参数进行解析
     } type;
 
 #if (NGX_SUPPRESS_WARN)
@@ -119,7 +126,8 @@ ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
     prev = NULL;
 #endif
 
-    if (filename) {
+    if (filename) 
+	{
 
         /* open configuration file */
 
@@ -134,19 +142,20 @@ ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
         prev = cf->conf_file;
 
         cf->conf_file = &conf_file;
-
+		// 获取配置文件信息
         if (ngx_fd_info(fd, &cf->conf_file->file.info) == NGX_FILE_ERROR) {
             ngx_log_error(NGX_LOG_EMERG, cf->log, ngx_errno,
                           ngx_fd_info_n " \"%s\" failed", filename->data);
         }
-
+		// 配置缓冲区用于存放配置文件信息
         cf->conf_file->buffer = &buf;
 
         buf.start = ngx_alloc(NGX_CONF_BUFFER, cf->log);
         if (buf.start == NULL) {
             goto failed;
         }
-
+		// [pos,last)表示缓存中真正存储了数据的区间，
+		// [start,end)表示缓存区的物理区域
         buf.pos = buf.start;
         buf.last = buf.start;
         buf.end = buf.last + NGX_CONF_BUFFER;
@@ -204,7 +213,7 @@ ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
 
 
     for ( ;; ) {
-        rc = ngx_conf_read_token(cf);
+        rc = ngx_conf_read_token(cf);	// 从配置文件中读取下一个命令
 
         /*
          * ngx_conf_read_token() may return
@@ -280,7 +289,7 @@ ngx_conf_parse(ngx_conf_t *cf, ngx_str_t *filename)
         }
 
 
-        rc = ngx_conf_handler(cf, rc);
+        rc = ngx_conf_handler(cf, rc); // 查找命令所在的模块，执行命令对应的函数
 
         if (rc == NGX_ERROR) {
             goto failed;
@@ -325,7 +334,7 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
     ngx_str_t      *name;
     ngx_command_t  *cmd;
 
-    name = cf->args->elts;
+    name = cf->args->elts;	/* 刚读出来的token */
 
     found = 0;
 
@@ -342,7 +351,7 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
                 continue;
             }
 
-            if (ngx_strcmp(name->data, cmd->name.data) != 0) {
+            if (ngx_strcmp(name->data, cmd->name.data) != 0) { // 命令名称对比
                 continue;
             }
 
@@ -350,24 +359,24 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
 
             if (cf->cycle->modules[i]->type != NGX_CONF_MODULE
                 && cf->cycle->modules[i]->type != cf->module_type)
-            {
+            {	// 模块类型对比
                 continue;
             }
 
             /* is the directive's location right ? */
 
-            if (!(cmd->type & cf->cmd_type)) {
+            if (!(cmd->type & cf->cmd_type)) {	// 命令类型对比
                 continue;
             }
 
-            if (!(cmd->type & NGX_CONF_BLOCK) && last != NGX_OK) {
+            if (!(cmd->type & NGX_CONF_BLOCK) && last != NGX_OK) {	// 非块指令必须以“;”结尾
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                   "directive \"%s\" is not terminated by \";\"",
                                   name->data);
                 return NGX_ERROR;
             }
 
-            if ((cmd->type & NGX_CONF_BLOCK) && last != NGX_CONF_BLOCK_START) {
+            if ((cmd->type & NGX_CONF_BLOCK) && last != NGX_CONF_BLOCK_START) {	// 块指令必须后接“{”
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                    "directive \"%s\" has no opening \"{\"",
                                    name->data);
@@ -375,8 +384,9 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
             }
 
             /* is the directive's argument count right ? */
-
-            if (!(cmd->type & NGX_CONF_ANY)) {
+			// 检测命令参数
+            if (!(cmd->type & NGX_CONF_ANY)) 
+			{
 
                 if (cmd->type & NGX_CONF_FLAG) {
 
@@ -411,19 +421,37 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
             conf = NULL;
 
             if (cmd->type & NGX_DIRECT_CONF) {
+				/*
+				 * NGX_DIRECT_CONF类型的配置指令，
+				 * 其配置项存储空间是全局作用域对应的存储空间。
+				 * 这个类型的指令主要出现在ngx_core_module模块里。
+				 */
                 conf = ((void **) cf->ctx)[cf->cycle->modules[i]->index];
 
             } else if (cmd->type & NGX_MAIN_CONF) {
+            	/*
+            	 * NGX_MAIN_CONF表示配置指令的作用域为全局作用域
+            	 * 除了ngx_core_module的配置指令(同时标识为NGX_DIRECT_CONF)位于这个作用域中外，
+				 * 
+            	 * 另外几个定义新的子级作用域的指令–events、http、mail、imap，
+            	 * 都是非NGX_DIRECT_CONF的NGX_MAIN_CONF指令，
+            	 * 它们在全局作用域中并未被分配空间，
+            	 * 所以在指令处理函数中分配的空间需要挂接到全局作用域中，
+            	 * 故传递给指令处理函数的参数是全局作用域的地址。
+				 */
                 conf = &(((void **) cf->ctx)[cf->cycle->modules[i]->index]);
 
             } else if (cf->ctx) {
+            	/*
+            	 * 其它类型配置指令项的存储位置和指令出现的作用域(并且非全局作用域)有关
+            	 */
                 confp = *(void **) ((char *) cf->ctx + cmd->conf);
 
                 if (confp) {
                     conf = confp[cf->cycle->modules[i]->ctx_index];
                 }
             }
-
+			// 配置项将要存储的位置确定后，调用指令处理函数，完成配置项初始化和其它工作
             rv = cmd->set(cf, cmd, conf);	//调用ngx_command_t 的set函数
 
             if (rv == NGX_CONF_OK) {
@@ -466,6 +494,7 @@ invalid:
 static ngx_int_t
 ngx_conf_read_token(ngx_conf_t *cf)
 {
+	/* http://blog.csdn.net/jackywgw/article/details/51454006 */
     u_char      *start, ch, *src, *dst;
     off_t        file_size;
     size_t       len;
@@ -475,27 +504,28 @@ ngx_conf_read_token(ngx_conf_t *cf)
     ngx_str_t   *word;
     ngx_buf_t   *b, *dump;
 
-    found = 0;
-    need_space = 0;
-    last_space = 1;
-    sharp_comment = 0;
-    variable = 0;
-    quoted = 0;
-    s_quoted = 0;
-    d_quoted = 0;
+    found = 0; // 标记是否找到一个命令
+    need_space = 0; // 下一个字符希望是空格
+    last_space = 1; // 上一个字符是空格
+    sharp_comment = 0; // 注释
+    variable = 0; // 存在变量
+    quoted = 0; // \符号
+    s_quoted = 0; // 单引号
+    d_quoted = 0; // 双引号
 
-    cf->args->nelts = 0;
-    b = cf->conf_file->buffer;
+    cf->args->nelts = 0; // 设置保存参数的数组个数为0，即清空保存配置的数组
+    b = cf->conf_file->buffer; // 获取配置文件的buffer
     dump = cf->conf_file->dump;
-    start = b->pos;
-    start_line = cf->conf_file->line;
-
+    start = b->pos; // 上一次读取结束的文件buf位置, 第一次读取时为文件的起始位置
+    start_line = cf->conf_file->line; // 上一次读取的结束行数
+	// 配置文件大小(字节)
     file_size = ngx_file_size(&cf->conf_file->file.info);
 
     for ( ;; ) {
 
-        if (b->pos >= b->last) {
-
+        if (b->pos >= b->last) 
+		{
+			// 如果偏移量大于文件大小,说明文件已读取完毕，返回NGX_CONF_FILE_DONE
             if (cf->conf_file->file.offset >= file_size) {
 
                 if (cf->args->nelts > 0 || !last_space) {
@@ -515,9 +545,10 @@ ngx_conf_read_token(ngx_conf_t *cf)
 
                 return NGX_CONF_FILE_DONE;
             }
-
+			// 这个两个值在重新执行for循环的情况下应该相等，
+			// 因为前面刚刚把b->pos赋值给了start
             len = b->pos - start;
-
+			// 如果这个长度超过了最大文件buffer,NGX_CONF_BUFFER(4096)，出错返回
             if (len == NGX_CONF_BUFFER) {
                 cf->conf_file->line = start_line;
 
@@ -541,15 +572,17 @@ ngx_conf_read_token(ngx_conf_t *cf)
             }
 
             if (len) {
+				// 把已扫描部分内容移动到buf开头
+				// 因为b->pos == b->last 所以移动的是buf中全部未解析的部分
                 ngx_memmove(b->start, start, len);
             }
 
             size = (ssize_t) (file_size - cf->conf_file->file.offset);
-
+			// 即文件大小大于分配的buffer长度，size取为buffer长度
             if (size > b->end - (b->start + len)) {
                 size = b->end - (b->start + len);
             }
-
+			// 读取size大小的文件数据到buf中，起始地址为b->start + len,修改文件偏移量
             n = ngx_read_file(&cf->conf_file->file, b->start + len, size,
                               cf->conf_file->file.offset);
 
@@ -564,9 +597,9 @@ ngx_conf_read_token(ngx_conf_t *cf)
                                    n, size);
                 return NGX_ERROR;
             }
-
-            b->pos = b->start + len;
-            b->last = b->pos + n;
+			
+            b->pos = b->start + len; // 修改当前buf的位置b->pos
+            b->last = b->pos + n; // 指向数据的结尾
             start = b->start;
 
             if (dump) {
@@ -574,64 +607,71 @@ ngx_conf_read_token(ngx_conf_t *cf)
             }
         }
 
-        ch = *b->pos++;
+        ch = *b->pos++;	// 当前字符存储于ch中
 
-        if (ch == LF) {
+        if (ch == LF) { // 换行
             cf->conf_file->line++;
 
-            if (sharp_comment) {
+            if (sharp_comment) { // 注释结束 只有行注释
                 sharp_comment = 0;
             }
         }
 
-        if (sharp_comment) {
+        if (sharp_comment) { // 跳过注释 直到换行
             continue;
         }
 
-        if (quoted) {
+        if (quoted) { // 如果上一个字符是\，则跳过当前字符，后面读取token会做处理
             quoted = 0;
             continue;
         }
 
-        if (need_space) {
+        if (need_space) { // 次字符必须是space分割符
+        	// 忽略掉space字符;space字符包括' ','\t',CR,LF
             if (ch == ' ' || ch == '\t' || ch == CR || ch == LF) {
-                last_space = 1;
-                need_space = 0;
+                last_space = 1; // last_space置1
+                need_space = 0; // 清空need_space
                 continue;
             }
-
+			// 如果遇到分号；则该行读取结束
             if (ch == ';') {
                 return NGX_OK;
             }
-
+			// 遇到'{'表示新的block的开始
             if (ch == '{') {
                 return NGX_CONF_BLOCK_START;
             }
-
+			// 如果字符是')',开始读取新的token;
             if (ch == ')') {
                 last_space = 1;
                 need_space = 0;
 
             } else {
+            	// 如果读到其它字符则解析失败
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                    "unexpected \"%c\"", ch);
                 return NGX_ERROR;
             }
         }
-
+		// last_space初始化为1,last_space表示上一个字符为字符串分隔符,需要重新计算start,以表示新的token的起始地址
+		// 表示一个token开始了，第一个非space字符
         if (last_space) {
+			/* 在这里出现'\', ''', '"' 表示是开头出现 */
+			// 忽略掉space字符;
+			// 例如 关键字 daemon 前面出现空格 应该忽略
             if (ch == ' ' || ch == '\t' || ch == CR || ch == LF) {
                 continue;
             }
-
+			// 重新计算start, start为当前关键字token开始
             start = b->pos - 1;
             start_line = cf->conf_file->line;
 
             switch (ch) {
-
+			// 如果字符是';', '{', '}', 此次命令读取结束;
             case ';':
             case '{':
                 if (cf->args->nelts == 0) {
+					// 如果遇到';', '{' 时  还没有读取过token 则表示失败
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                        "unexpected \"%c\"", ch);
                     return NGX_ERROR;
@@ -645,29 +685,32 @@ ngx_conf_read_token(ngx_conf_t *cf)
 
             case '}':
                 if (cf->args->nelts != 0) {
+					// 如果遇到'}' 而还有token未解析 则表示失败
+					/* 猜测的意思是说，{}内的内容都会函数返回，
+						然后'}'一定是本次函数被调用第一次出现 */
                     ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                        "unexpected \"}\"");
                     return NGX_ERROR;
                 }
 
                 return NGX_CONF_BLOCK_DONE;
-
+			// 如果字符是'#',字符后面是注释;
             case '#':
                 sharp_comment = 1;
                 continue;
 
-            case '\\':
+            case '\\': // 遇到'\'，设置quoted=1，last_space=0
                 quoted = 1;
                 last_space = 0;
                 continue;
-
+			// 如果字符是'"',''',下一个字符在单引号或双引号中
             case '"':
                 start++;
                 d_quoted = 1;
                 last_space = 0;
                 continue;
-
-            case '\'':
+			
+            case '\'':	//  如果字符是'\',下一个字符将被忽略
                 start++;
                 s_quoted = 1;
                 last_space = 0;
@@ -678,6 +721,8 @@ ngx_conf_read_token(ngx_conf_t *cf)
             }
 
         } else {
+			/* 在这里出现'\', ''', '"' 表示是结尾出现 */
+        	// 开始读取新token
             if (ch == '{' && variable) {
                 continue;
             }
@@ -688,12 +733,12 @@ ngx_conf_read_token(ngx_conf_t *cf)
                 quoted = 1;
                 continue;
             }
-
+			// 如果字符是'$',后面的非space字符组成变量token;
             if (ch == '$') {
                 variable = 1;
                 continue;
             }
-
+			// 碰到了结束引号'"','''时，token读取完成;
             if (d_quoted) {
                 if (ch == '"') {
                     d_quoted = 0;
@@ -707,15 +752,16 @@ ngx_conf_read_token(ngx_conf_t *cf)
                     need_space = 1;
                     found = 1;
                 }
-
+			// 碰到了space字符，token读取完成
             } else if (ch == ' ' || ch == '\t' || ch == CR || ch == LF
                        || ch == ';' || ch == '{')
             {
                 last_space = 1;
                 found = 1;
             }
-
+			// 正常情况下，遇到空格或分号结束时，设置了last_space=1,found=1
             if (found) {
+				// 将找到的token追加到cf->args数组中，并且每个token字符串以'\0'结束
                 word = ngx_array_push(cf->args);
                 if (word == NULL) {
                     return NGX_ERROR;
@@ -760,15 +806,15 @@ ngx_conf_read_token(ngx_conf_t *cf)
                 *dst = '\0';
                 word->len = len;
 
-                if (ch == ';') {
+                if (ch == ';') { // 正常情况下，遇到分号，返回一行
                     return NGX_OK;
                 }
 
-                if (ch == '{') {
+                if (ch == '{') { // 如果是一个block，如event，则返回NGX_CONF_BLOCK_START
                     return NGX_CONF_BLOCK_START;
                 }
 
-                found = 0;
+                found = 0; // 等于其它的符号，如空格，则继续循环
             }
         }
     }

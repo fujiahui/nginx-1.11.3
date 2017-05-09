@@ -65,16 +65,16 @@ static void ngx_slab_error(ngx_slab_pool_t *pool, ngx_uint_t level,
 
 
 static ngx_uint_t  ngx_slab_max_size;	// 2048
-static ngx_uint_t  ngx_slab_exact_size;	// 128
-static ngx_uint_t  ngx_slab_exact_shift;	// 7
+static ngx_uint_t  ngx_slab_exact_size;	// 64
+static ngx_uint_t  ngx_slab_exact_shift;	// 6
 /*
  * 考虑32bit的情况
  * ngx_pagesize = 4096;
  * ngx_pagesize_shift = 12
  * ngx_slab_max_size = 2048
- * ngx_slab_exact_size = 128
- * ngx_slab_exact_shift = 7
- * ngx_slab_min_size = 128;
+ * ngx_slab_exact_size = 64
+ * ngx_slab_exact_shift = 6
+ * ngx_slab_min_size = 8;
  * ngx_slab_min_shift = 3;
 **/
 
@@ -90,22 +90,22 @@ ngx_slab_init(ngx_slab_pool_t *pool)
 
 	// ngx_pagesize=4KB=4096B
 	// ngx_slab_exact_size=128B
-	// ngx_slab_exact_shift=7
+	// ngx_slab_exact_shift=6
     /* STUB */
     if (ngx_slab_max_size == 0) {
         ngx_slab_max_size = ngx_pagesize / 2;	// 2048
         // 8 * sizeof(uintptr_t)表示一个int型数据为32bit
         // 1、当用int可以表示一个页所有的块，则bitmap不在页中开辟
         // 2、当用int不能表示所有的块，则在块中开辟多个int大小来表示bitmap
-        ngx_slab_exact_size = ngx_pagesize / (8 * sizeof(uintptr_t));	//	128
-        for (n = ngx_slab_exact_size; n >>= 1; ngx_slab_exact_shift++) {	//	7
+        ngx_slab_exact_size = ngx_pagesize / (8 * sizeof(uintptr_t));	//	64
+        for (n = ngx_slab_exact_size; n >>= 1; ngx_slab_exact_shift++) {	//	6
             /* void */
         }
     }
     /**/
 
 	// pool->min_shift=3
-	// pool->min_size=6
+	// pool->min_size=8
     pool->min_size = 1 << pool->min_shift;	//	8
 
     p = (u_char *) pool + sizeof(ngx_slab_pool_t);
@@ -501,6 +501,7 @@ ngx_slab_free_locked(ngx_slab_pool_t *pool, void *p)
         goto fail;
     }
 
+	// 计算n为第几个page
     n = ((u_char *) p - pool->start) >> ngx_pagesize_shift;
     page = &pool->pages[n];
     slab = page->slab;
@@ -516,8 +517,9 @@ ngx_slab_free_locked(ngx_slab_pool_t *pool, void *p)
         if ((uintptr_t) p & (size - 1)) {
             goto wrong_chunk;
         }
-
+		// n 为page中第几个chunk
         n = ((uintptr_t) p & (ngx_pagesize - 1)) >> shift;
+		// m为找到后的mask
         m = (uintptr_t) 1 << (n & (sizeof(uintptr_t) * 8 - 1));
         n /= (sizeof(uintptr_t) * 8);
         bitmap = (uintptr_t *)

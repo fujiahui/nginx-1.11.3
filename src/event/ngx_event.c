@@ -946,7 +946,8 @@ ngx_events_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     *(void **) conf = ctx;
 
-    for (i = 0; cf->cycle->modules[i]; i++) {
+    for (i = 0; cf->cycle->modules[i]; i++) 
+	{
         if (cf->cycle->modules[i]->type != NGX_EVENT_MODULE) {
             continue;
         }
