@@ -160,7 +160,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
      * the http null srv_conf context, it is used to merge
      * the server{}s' srv_conf's
      */
-
+	
     ctx->srv_conf = ngx_pcalloc(cf->pool, sizeof(void *) * ngx_http_max_module);
     if (ctx->srv_conf == NULL) {
         return NGX_CONF_ERROR;
@@ -863,7 +863,7 @@ ngx_http_add_location(ngx_conf_t *cf, ngx_queue_t **locations,
 {
     ngx_http_location_queue_t  *lq;
 
-    if (*locations == NULL) {
+    if (*locations == NULL) {	//	location不存在 则创建
         *locations = ngx_palloc(cf->temp_pool,
                                 sizeof(ngx_http_location_queue_t));
         if (*locations == NULL) {
@@ -1164,7 +1164,7 @@ ngx_http_add_listen(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     struct sockaddr            *sa;
     ngx_http_conf_port_t       *port;
     ngx_http_core_main_conf_t  *cmcf;
-
+	//	获取ngx_http_core_module的main配置结构
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
     if (cmcf->ports == NULL) {
@@ -1177,21 +1177,21 @@ ngx_http_add_listen(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
 
     sa = &lsopt->sockaddr.sockaddr;
     p = ngx_inet_get_port(sa);
-
+	//	cmcf->ports 是已经注册过的port数组
     port = cmcf->ports->elts;
     for (i = 0; i < cmcf->ports->nelts; i++) {
 
         if (p != port[i].port || sa->sa_family != port[i].family) {
             continue;
         }
-
+		
         /* a port is already in the port list */
-
+		//	port已经存在了，将地址信息加入到这个port的地址列表中
         return ngx_http_add_addresses(cf, cscf, &port[i], lsopt);
     }
 
     /* add a port to the port list */
-
+	//	所有的ip:port信息都会存储在http{}级别下的ngx_http_core_main_conf_t结构的一个数组下
     port = ngx_array_push(cmcf->ports);
     if (port == NULL) {
         return NGX_ERROR;
@@ -1200,7 +1200,7 @@ ngx_http_add_listen(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     port->family = sa->sa_family;
     port->port = p;
     port->addrs.elts = NULL;
-
+	//	将地址信息加入到对应port的地址列表中，一个port可以对应过个地址
     return ngx_http_add_address(cf, cscf, port, lsopt);
 }
 
@@ -1236,7 +1236,7 @@ ngx_http_add_addresses(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
         }
 
         /* the address is already in the address list */
-
+		//	新加入的地址已经在地址列表中存在了，将新的虚拟主机信息加入到这个地址的虚拟主机列表中
         if (ngx_http_add_server(cf, cscf, &addr[i]) != NGX_OK) {
             return NGX_ERROR;
         }
@@ -1253,7 +1253,7 @@ ngx_http_add_addresses(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
         http2 = lsopt->http2 || addr[i].opt.http2;
 #endif
 
-        if (lsopt->set) {
+        if (lsopt->set) {	//	新的虚拟主机信息中设置了其它参数
 
             if (addr[i].opt.set) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
@@ -1266,7 +1266,7 @@ ngx_http_add_addresses(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
 
         /* check the duplicate "default" server for this address:port */
 
-        if (lsopt->default_server) {
+        if (lsopt->default_server) {	//	新的虚拟主机被设置为默认主机
 
             if (default_server) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
@@ -1307,7 +1307,7 @@ ngx_http_add_address(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
 {
     ngx_http_conf_addr_t  *addr;
 
-    if (port->addrs.elts == NULL) {
+    if (port->addrs.elts == NULL) {	//	初始化port地址列表
         if (ngx_array_init(&port->addrs, cf->temp_pool, 4,
                            sizeof(ngx_http_conf_addr_t))
             != NGX_OK)
@@ -1328,7 +1328,7 @@ ngx_http_add_address(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     }
 
 #endif
-
+	//	将新地址加入到地址列表中
     addr = ngx_array_push(&port->addrs);
     if (addr == NULL) {
         return NGX_ERROR;
@@ -1359,7 +1359,7 @@ ngx_http_add_server(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     ngx_uint_t                  i;
     ngx_http_core_srv_conf_t  **server;
 
-    if (addr->servers.elts == NULL) {
+    if (addr->servers.elts == NULL) {	//	如果该地址ip:port还没有关联的ngx_http_core_srv_conf_t结构
         if (ngx_array_init(&addr->servers, cf->temp_pool, 4,
                            sizeof(ngx_http_core_srv_conf_t *))
             != NGX_OK)
@@ -1367,17 +1367,17 @@ ngx_http_add_server(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
             return NGX_ERROR;
         }
 
-    } else {
+    } else {	//	已经存在一些关联的ngx_http_core_srv_conf_t结构体
         server = addr->servers.elts;
         for (i = 0; i < addr->servers.nelts; i++) {
-            if (server[i] == cscf) {
+            if (server[i] == cscf) {	//	查找是否已经存在cscf
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                    "a duplicate listen %s", addr->opt.addr);
                 return NGX_ERROR;
             }
         }
     }
-
+	//	将cscf结构体加入到servers数组中 与ip:port关联起来
     server = ngx_array_push(&addr->servers);
     if (server == NULL) {
         return NGX_ERROR;

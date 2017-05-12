@@ -2959,6 +2959,7 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
         return NGX_CONF_ERROR;
     }
 
+	//	main_conf将指向所属http块下ngx_http_conf_ctx_t结构体的main_conf指针数组
     http_ctx = cf->ctx;
     ctx->main_conf = http_ctx->main_conf;
 
@@ -3010,11 +3011,11 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 
 
     /* the server configuration context */
-
+	//	ngx_http_core_module的ngx_http_core_srv_conf_t配置结构体
     cscf = ctx->srv_conf[ngx_http_core_module.ctx_index];
     cscf->ctx = ctx;
 
-
+	//	http{}级别下的ngx_http_core_main_conf_t配置结构体
     cmcf = ctx->main_conf[ngx_http_core_module.ctx_index];
 	/*
 	 * 这时会将ngx_http_core_srv_conf_t添加到
@@ -3037,7 +3038,7 @@ ngx_http_core_server(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     rv = ngx_conf_parse(cf, NULL);
 
     *cf = pcf;
-
+	//	如果没有解析到listen配置项
     if (rv == NGX_CONF_OK && !cscf->listen) {
         ngx_memzero(&lsopt, sizeof(ngx_http_listen_opt_t));
 
@@ -3094,8 +3095,9 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     if (ctx == NULL) {
         return NGX_CONF_ERROR;
     }
-
-    pctx = cf->ctx;	//	上一级server 块的ctx
+	//	保存下父ctx，可能是 server 的 ctx，也可能是父 location 的 ctx
+    pctx = cf->ctx;
+	//	location 级别，无特别的 main_conf 和 srv_conf，直接用父级别的
     ctx->main_conf = pctx->main_conf;
     ctx->srv_conf = pctx->srv_conf;
 	//	申请location块的loc数组
@@ -3121,8 +3123,8 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
     }
 	//	ngx_http_core_module模块的ngx_http_core_loc_conf_t
     clcf = ctx->loc_conf[ngx_http_core_module.ctx_index];
-    clcf->loc_conf = ctx->loc_conf;
-
+    clcf->loc_conf = ctx->loc_conf;	//	保存下当前的 loc_conf 到 clcf 中，用途后面分析
+	//	获取 location 行解析结果，数组类型，如：["location", "^~", "/images/"]
     value = cf->args->elts;
 
     if (cf->args->nelts == 3) {
@@ -3204,10 +3206,10 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
             }
         }
     }
-	//	pclcf是Server A块内产生的ngx_http_core_loc_conf_t关联起来的
+	//	pclcf是父块内产生的ngx_http_core_loc_conf_t关联起来的
     pclcf = pctx->loc_conf[ngx_http_core_module.ctx_index];
 
-    if (cf->cmd_type == NGX_HTTP_LOC_CONF) {
+    if (cf->cmd_type == NGX_HTTP_LOC_CONF) {	//	嵌套location
 
         /* nested location */
 
@@ -3254,7 +3256,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
             return NGX_CONF_ERROR;
         }
     }
-
+	//	将当前的 location 配置加入的父 locations 的队列里面
     if (ngx_http_add_location(cf, &pclcf->locations, clcf) != NGX_OK) {
         return NGX_CONF_ERROR;
     }

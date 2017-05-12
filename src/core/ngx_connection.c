@@ -1079,8 +1079,8 @@ ngx_get_connection(ngx_socket_t s, ngx_log_t *log)
 
     ngx_memzero(rev, sizeof(ngx_event_t));
     ngx_memzero(wev, sizeof(ngx_event_t));
-
-    rev->instance = !instance;
+	//	½«instanceÈ¡·´
+    rev->instance = !instance;	
     wev->instance = !instance;
 
     rev->index = NGX_INVALID_INDEX;

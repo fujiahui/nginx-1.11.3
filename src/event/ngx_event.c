@@ -168,6 +168,7 @@ static ngx_command_t  ngx_event_core_commands[] = {
 ngx_event_module_t  ngx_event_core_module_ctx = {
     &event_core_name,
     ngx_event_core_create_conf,            /* create configuration */
+    /* init_conf 会将ngx_event_core_commands中的token在配置文件中没有配置的项进行默认初始化 */
     ngx_event_core_init_conf,              /* init configuration */
 
     { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
@@ -253,7 +254,7 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
 
     ngx_log_debug1(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
                    "timer delta: %M", delta);
-
+	//	开始处理连接事件回调
     ngx_event_process_posted(cycle, &ngx_posted_accept_events);
 
     if (ngx_accept_mutex_held) {	//	表示当前获得了accept_mutex锁 需要释放
@@ -264,7 +265,7 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
 		//	处理定时器事件
         ngx_event_expire_timers();
     }
-
+	//	处理普通事件回调
     ngx_event_process_posted(cycle, &ngx_posted_events);
 }
 
@@ -944,7 +945,12 @@ ngx_events_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
+	// 将 conf 强制转换为指向指针的指针
+	// 然后再给它加上一个 * 解引用，如此，便取得了该指针指向的地址的值
     *(void **) conf = ctx;
+	// ctx指向一个数组A，*ctx是数组A的第一个元素，也就是指向数组B的指针
+	// 数组A的元素是指向数组B的指针, **ctx是数组B的第一个元素
+	// 数组B的元素是指针，***ctx是数组B第一个元素的解引用，也就是实际的值
 
     for (i = 0; cf->cycle->modules[i]; i++) 
 	{
@@ -1035,7 +1041,7 @@ ngx_event_use(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     if (ecf->use != NGX_CONF_UNSET_UINT) {
         return "is duplicate";
     }
-
+	// use epoll;
     value = cf->args->elts;
 
     if (cf->cycle->old_cycle->conf_ctx) {

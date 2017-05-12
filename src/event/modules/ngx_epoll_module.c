@@ -96,7 +96,7 @@ struct io_event {
 
 
 typedef struct {
-    ngx_uint_t  events;
+    ngx_uint_t  events;	// epoll_wait的参数3：一次最多可以返回的事件数
     ngx_uint_t  aio_requests;
 } ngx_epoll_conf_t;
 
@@ -194,6 +194,7 @@ ngx_event_module_t  ngx_epoll_module_ctx = {
         NULL,                            /* trigger a notify */
 #endif
         ngx_epoll_process_events,        /* process the events */
+        /* ngx_event_process_init会调用module->actions.init() */
         ngx_epoll_init,                  /* init the events */
         ngx_epoll_done,                  /* done the events */
     }
@@ -290,7 +291,7 @@ ngx_epoll_aio_init(ngx_cycle_t *cycle, ngx_epoll_conf_t *epcf)
     ngx_eventfd_conn.read = &ngx_eventfd_event;
     ngx_eventfd_conn.log = cycle->log;
 
-    ee.events = EPOLLIN|EPOLLET;
+    ee.events = EPOLLIN|EPOLLET;	//	边缘触发
     ee.data.ptr = &ngx_eventfd_conn;
 
     if (epoll_ctl(ep, EPOLL_CTL_ADD, ngx_eventfd, &ee) != -1) {
@@ -319,12 +320,14 @@ failed:
 
 #endif
 
-
+// ngx_epoll_init会在ngx_event_process_init中被调用(module->actions.init(cycle, ngx_timer_resolution))
+// ngx_event_process_init 又会在ngx_single_process_cycle or ngx_worker_process_init
+// 函数中被调用 (cycle->modules[i]->init_process(cycle))
 static ngx_int_t
 ngx_epoll_init(ngx_cycle_t *cycle, ngx_msec_t timer)
 {
     ngx_epoll_conf_t  *epcf;
-
+	//	获取ngx_epoll_module的配置信息conf
     epcf = ngx_event_get_conf(cycle->conf_ctx, ngx_epoll_module);
 
     if (ep == -1) {
@@ -605,7 +608,7 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
 #endif
     }
 
-    if (e->active) {
+    if (e->active) {	// 如果已经在epoll事件中 则是修改
         op = EPOLL_CTL_MOD;
         events |= prev;
 
@@ -618,7 +621,7 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
         events &= ~EPOLLRDHUP;
     }
 #endif
-	/*** ptr存储事件关联的连接对象(ngx_connection_t*)及事件过期比特位，
+	/*** ptr存放事件关联的连接对象(ngx_connection_t*)及事件过期比特位，
 				linux平台中任何对象的地址最低位必定为零***/
     ee.events = events | (uint32_t) flags;
     ee.data.ptr = (void *) ((uintptr_t) c | ev->instance);
@@ -626,7 +629,7 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, ev->log, 0,
                    "epoll add event: fd:%d op:%d ev:%08XD",
                    c->fd, op, ee.events);
-
+	//	epoll默认触发模式是水平触发模式 没有指定时 则为水平触发
     if (epoll_ctl(ep, op, c->fd, &ee) == -1) {
         ngx_log_error(NGX_LOG_ALERT, ev->log, ngx_errno,
                       "epoll_ctl(%d, %d) failed", op, c->fd);
@@ -704,7 +707,7 @@ static ngx_int_t
 ngx_epoll_add_connection(ngx_connection_t *c)
 {
     struct epoll_event  ee;
-
+	//	边缘触发
     ee.events = EPOLLIN|EPOLLOUT|EPOLLET|EPOLLRDHUP;
     ee.data.ptr = (void *) ((uintptr_t) c | c->read->instance);
 
@@ -763,7 +766,7 @@ ngx_epoll_del_connection(ngx_connection_t *c, ngx_uint_t flags)
 
 
 #if (NGX_HAVE_EVENTFD)
-
+//	#define ngx_notify           ngx_event_actions.notify
 static ngx_int_t
 ngx_epoll_notify(ngx_event_handler_pt handler)
 {
@@ -783,6 +786,7 @@ ngx_epoll_notify(ngx_event_handler_pt handler)
 #endif
 
 /*timer表示收集事件时的最长等待时间*/
+// ngx_process_events_and_timers中调用次函数(ngx_process_events(cycle, timer, flags);)
 static ngx_int_t
 ngx_epoll_process_events(ngx_cycle_t *cycle, ngx_msec_t timer, ngx_uint_t flags)
 {
@@ -805,7 +809,7 @@ ngx_epoll_process_events(ngx_cycle_t *cycle, ngx_msec_t timer, ngx_uint_t flags)
     err = (events == -1) ? ngx_errno : 0;
 	//	时间缓存和管理
     if (flags & NGX_UPDATE_TIME || ngx_event_timer_alarm) {
-        ngx_time_update();
+        ngx_time_update();	// 调用gettimeofday刷新最新时间
     }
 
     if (err) {

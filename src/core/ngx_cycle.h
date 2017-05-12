@@ -37,7 +37,7 @@ struct ngx_shm_zone_s {
 
 struct ngx_cycle_s {
 	//	首先是一个void***型的数组 array[void***]
-	//	数组成员又是一个void***指针
+	//	数组成员又是一个void**指针
 	//	这个指针指向另一个存储着指针的数组array[void*]
     void                  ****conf_ctx;
     ngx_pool_t               *pool;

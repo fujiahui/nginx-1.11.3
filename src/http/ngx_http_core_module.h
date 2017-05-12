@@ -485,6 +485,7 @@ struct ngx_http_core_loc_conf_s {
 	 * 以双向链表方式组织起来
 	 * 该locations指针将指向ngx_http_location_queue_t结构体
 	*/
+	//	ngx_queue_t 包含一个 *prev 和一个 *next 指针，用于构造链表
     ngx_queue_t  *locations;
 
 #if 0

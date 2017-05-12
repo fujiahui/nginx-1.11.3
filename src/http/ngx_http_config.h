@@ -22,9 +22,14 @@ typedef struct {
 
 
 typedef struct {
+	/*在解析http{}内配置项前回调*/
     ngx_int_t   (*preconfiguration)(ngx_conf_t *cf);
+	/*解析完http{}内配置项后回调*/
     ngx_int_t   (*postconfiguration)(ngx_conf_t *cf);
-
+	/*
+	 * 创建用于存储HTTP全局配置项的结构体，该结构体中的成员将保存直属于http{}块的配置项参数
+	 * 它会在解析main配置项前调用
+	 */
     void       *(*create_main_conf)(ngx_conf_t *cf);
     char       *(*init_main_conf)(ngx_conf_t *cf, void *conf);
 
