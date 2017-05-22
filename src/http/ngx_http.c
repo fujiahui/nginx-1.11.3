@@ -118,7 +118,7 @@ ngx_module_t  ngx_http_module = {
 
 static char *
 ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
-{
+{/*	http://chinaren.wei.blog.163.com/blog/static/13907612920111165947622/	*/
     char                        *rv;
     ngx_uint_t                   mi, m, s;
     ngx_conf_t                   pcf;
@@ -138,7 +138,10 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     if (ctx == NULL) {
         return NGX_CONF_ERROR;
     }
-
+	//	conf = ((void **) cf->ctx)[cf->cycle->modules[i]->index];
+	// (ngx_http_conf_ctx_t **) conf 是一个数组，数组元素是ngx_http_conf_ctx_t *
+	// *(ngx_http_conf_ctx_t **) conf 取数组的 第一个元素
+	// 数组第一个元素设置为ctx
     *(ngx_http_conf_ctx_t **) conf = ctx;
 
 
@@ -214,7 +217,7 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     pcf = *cf;
-    cf->ctx = ctx;
+    cf->ctx = ctx;	//	指向http{}模块的ngx_http_conf_ctx_t
 
     for (m = 0; cf->cycle->modules[m]; m++) {
         if (cf->cycle->modules[m]->type != NGX_HTTP_MODULE) {
@@ -258,14 +261,14 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         mi = cf->cycle->modules[m]->ctx_index;
 
         /* init http{} main_conf's */
-
+		//	一般会对配置文件中没有出现的配置项进行默认初始化
         if (module->init_main_conf) {
             rv = module->init_main_conf(cf, ctx->main_conf[mi]);
             if (rv != NGX_CONF_OK) {
                 goto failed;
             }
         }
-		//	合并main、svr级别的的server、location相关配置项
+		//	合并main、svr级别的server、location相关配置项
 		/*
 		 * cf:  
 		 * cmcf: ngx_http_core_module的ngx_http_core_main_conf_t,包含一个servers成员
@@ -288,10 +291,13 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 		 *
 		*/
         clcf = cscfp[s]->ctx->loc_conf[ngx_http_core_module.ctx_index];
-
+		
         if (ngx_http_init_locations(cf, cscfp[s], clcf) != NGX_OK) {
             return NGX_CONF_ERROR;
         }
+		// 最后的locations只剩下 '前缀匹配|精确匹配'
+		// 前缀匹配: location /example/ {[configuration test]} or location ^~ /example/ {}
+		// 精确匹配: location = / {[configuration test]}
 		//	构建静态二叉树
         if (ngx_http_init_static_location_trees(cf, clcf) != NGX_OK) {
             return NGX_CONF_ERROR;
@@ -411,7 +417,11 @@ ngx_http_init_phases(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
     return NGX_OK;
 }
 
-
+/* 调用ngx_http_init_headers_in_hash将所有可能的header初始化成hash map，
+ * 然后保存至ngx_http_core_main_conf_t的headers_in_hash字段中。
+ * 在ngx_http_request.c中，定义的ngx_http_headers_in数组就是所有可能的header。
+ * 这里会查看解析出的header是否在这个map，如果在的话会调用对应的handler进行初始化。
+ */
 static ngx_int_t
 ngx_http_init_headers_in_hash(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf)
 {
@@ -578,8 +588,9 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
     ngx_http_conf_ctx_t         *ctx, saved;
     ngx_http_core_loc_conf_t    *clcf;
     ngx_http_core_srv_conf_t   **cscfp;
-
+	//	cmcf里保存server数组，取出数组的地址给cscfp
     cscfp = cmcf->servers.elts;
+	// ctx是http{}块下的全局ngx_http_conf_ctx_t结构体
     ctx = (ngx_http_conf_ctx_t *) cf->ctx;
     saved = *ctx;
     rv = NGX_CONF_OK;
@@ -587,10 +598,14 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
     for (s = 0; s < cmcf->servers.nelts; s++) {
 
         /* merge the server{}s' srv_conf's */
-
+		// ctx->srv_conf是所有HTTP模块产生的server相关的srv级别配置结构体
         ctx->srv_conf = cscfp[s]->ctx->srv_conf;
 
         if (module->merge_srv_conf) {
+			/*
+			 * saved.srv_conf[ctx_index] 是当前HTTP模块在http{}块下由create_srv_conf方法创建的结构体
+			 * cscfp[s]->ctx->srv_conf[ctx_index] 是在server{}块下由create_srv_conf方法创建的结构体
+			**/
             rv = module->merge_srv_conf(cf, saved.srv_conf[ctx_index],
                                         cscfp[s]->ctx->srv_conf[ctx_index]);
             if (rv != NGX_CONF_OK) {
@@ -601,9 +616,9 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
         if (module->merge_loc_conf) {
 
             /* merge the server{}'s loc_conf */
-
+			//	cscfp[s]->ctx->loc_conf动态数组成员都是由server{}块下所有HTTP模块的create_loc_conf方法创建的结构体指针
             ctx->loc_conf = cscfp[s]->ctx->loc_conf;
-
+			/*首先将http{}块下main级别与server{}块下srv级别的location相关的结构体合并*/
             rv = module->merge_loc_conf(cf, saved.loc_conf[ctx_index],
                                         cscfp[s]->ctx->loc_conf[ctx_index]);
             if (rv != NGX_CONF_OK) {
@@ -611,9 +626,9 @@ ngx_http_merge_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
             }
 
             /* merge the locations{}' loc_conf's */
-
+			// clcf是server块下ngx_http_core_module模块使用create_loc_conf方法产生的ngx_http_core_loc_conf_t结构体
             clcf = cscfp[s]->ctx->loc_conf[ngx_http_core_module.ctx_index];
-
+			// 将server{}块与其所包含的locations{}块下的结构体进行合并
             rv = ngx_http_merge_locations(cf, clcf->locations,
                                           cscfp[s]->ctx->loc_conf,
                                           module, ctx_index);
@@ -653,8 +668,15 @@ ngx_http_merge_locations(ngx_conf_t *cf, ngx_queue_t *locations,
          q = ngx_queue_next(q))
     {
         lq = (ngx_http_location_queue_t *) q;
-
+		/*
+		 * 如果location后的匹配字符串不依靠Nginx自定义的通配符就可以完全匹配的话
+		 * 则exact指向当前location对应的ngx_http_core_loc_conf_t结构体
+		 * 否则使用inclusive指向对应的ngx_http_core_loc_conf_t结构体
+		 *
+		 * 且exact优先级高于inclusive
+		 */
         clcf = lq->exact ? lq->exact : lq->inclusive;
+		//	clcf->loc_conf指针数组保存着当前location下所有HTTP模块使用create_loc_conf方法生成的结构体指针
         ctx->loc_conf = clcf->loc_conf;
 
         rv = module->merge_loc_conf(cf, loc_conf[ctx_index],
@@ -702,10 +724,10 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
 	/*前缀匹配|绝对匹配--->正则匹配--->命名--> 未命名*/
     ngx_queue_sort(locations, ngx_http_cmp_locations);
 
-    named = NULL;
+    named = NULL;	//	location @test {}
     n = 0;
 #if (NGX_PCRE)
-    regex = NULL;
+    regex = NULL;	//	location ~* .(gif|jpg)$ {} or location ~ .(gif|jpg)$ {}
     r = 0;
 #endif
 	//	主要是找到regex正则起始处 和 named的起始处
@@ -717,6 +739,10 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
 
         clcf = lq->exact ? lq->exact : lq->inclusive;
 		//	递归调用
+		/* 由于可能存在nested location，
+		 * 也就是location里面嵌套的location，
+		 * 这里需要递归的处理一下当前location下面的nested location
+		 */
         if (ngx_http_init_locations(cf, NULL, clcf) != NGX_OK) {
             return NGX_ERROR;
         }
@@ -806,7 +832,9 @@ ngx_http_init_locations(ngx_conf_t *cf, ngx_http_core_srv_conf_t *cscf,
     }
 
 #endif
-	//	最后的locations只剩下 '前缀匹配|绝对匹配'
+	//	最后的locations只剩下 '前缀匹配|精确匹配'
+	// 前缀匹配: location /example/ {[configuration test]} or location ^~ /example/ {}
+	// 精确匹配: location = / {[configuration test]}
     return NGX_OK;
 }
 
@@ -828,7 +856,7 @@ ngx_http_init_static_location_trees(ngx_conf_t *cf,
     if (ngx_queue_empty(locations)) {
         return NGX_OK;
     }
-
+	//	这里也是由于nested location，需要递归一下
     for (q = ngx_queue_head(locations);
          q != ngx_queue_sentinel(locations);
          q = ngx_queue_next(q))
@@ -841,11 +869,15 @@ ngx_http_init_static_location_trees(ngx_conf_t *cf,
             return NGX_ERROR;
         }
     }
-
+	/* join队列中名字相同的inclusive和exact类型location，
+	 * 也就是如果某个exact_match的location名字和普通字符串匹配的location名字相同的话， 
+     * 就将它们合到一个节点中，分别保存在节点的exact和inclusive下，
+     * 这一步的目的实际是去重，为后面的建立排序树做准备 
+     */
     if (ngx_http_join_exact_locations(cf, locations) != NGX_OK) {
         return NGX_ERROR;
     }
-
+	//	递归每个location节点，得到当前节点的名字为其前缀的location的列表，保存在当前节点的list字段下
     ngx_http_create_locations_list(locations, ngx_queue_head(locations));
 
     pclcf->static_locations = ngx_http_create_locations_tree(cf, locations, 0);
@@ -1020,26 +1052,31 @@ ngx_http_join_exact_locations(ngx_conf_t *cf, ngx_queue_t *locations)
 
 static void
 ngx_http_create_locations_list(ngx_queue_t *locations, ngx_queue_t *q)
-{
+{/*	http://chinaren.wei.blog.163.com/blog/static/13907612920111165947622/	*/
     u_char                     *name;
     size_t                      len;
     ngx_queue_t                *x, tail;
     ngx_http_location_queue_t  *lq, *lx;
-
+	//	队列最后一个元素 递归结束
     if (q == ngx_queue_last(locations)) {
         return;
     }
 
     lq = (ngx_http_location_queue_t *) q;
-
+	//	非 inclusive 类型，无需处理，处理下一个
     if (lq->inclusive == NULL) {
         ngx_http_create_locations_list(locations, ngx_queue_next(q));
         return;
     }
-
+	//	获取当前 location 的 name 和 name 的长度
     len = lq->name->len;
     name = lq->name->data;
-
+	/*
+	 * 以 lq 为准，把所有以 lq->name 为前缀的 location 全部取出来
+	 * 由于所有的 locations 都是经过排序，相同前缀按长度排列在一起
+	 * 这里是寻找第一个不是以 lq->name 为前缀的 location 元素 x
+	 * x 之前的元素，都具有相同的前缀 lq->name
+	*/
     for (x = ngx_queue_next(q);
          x != ngx_queue_sentinel(locations);
          x = ngx_queue_next(x))
@@ -1062,7 +1099,7 @@ ngx_http_create_locations_list(ngx_queue_t *locations, ngx_queue_t *q)
 
     ngx_queue_split(locations, q, &tail);
     ngx_queue_add(&lq->list, &tail);
-
+	//	如果 locations 队列处理完毕，则开始递归处理 lq->list
     if (x == ngx_queue_sentinel(locations)) {
         ngx_http_create_locations_list(&lq->list, ngx_queue_head(&lq->list));
         return;
@@ -1090,11 +1127,11 @@ ngx_http_create_locations_tree(ngx_conf_t *cf, ngx_queue_t *locations,
     ngx_queue_t                    *q, tail;
     ngx_http_location_queue_t      *lq;
     ngx_http_location_tree_node_t  *node;
-
+	//	取得居中的 location，准备将 locations 分为两半
     q = ngx_queue_middle(locations);
 
     lq = (ngx_http_location_queue_t *) q;
-    len = lq->name->len - prefix;
+    len = lq->name->len - prefix;	//	取得当前除去 prefix 后 name 的长度
 
     node = ngx_palloc(cf->pool,
                       offsetof(ngx_http_location_tree_node_t, name) + len);
@@ -1112,8 +1149,9 @@ ngx_http_create_locations_tree(ngx_conf_t *cf, ngx_queue_t *locations,
                            || (lq->inclusive && lq->inclusive->auto_redirect));
 
     node->len = (u_char) len;
+	//	给 lq->name 赋值，其值为 lq->name 去掉 prefix 后的部分
     ngx_memcpy(node->name, &lq->name->data[prefix], len);
-
+	//	将 locations 分为两半
     ngx_queue_split(locations, q, &tail);
 
     if (ngx_queue_empty(locations)) {
@@ -1123,18 +1161,18 @@ ngx_http_create_locations_tree(ngx_conf_t *cf, ngx_queue_t *locations,
          */
         goto inclusive;
     }
-
+	//	locations 这一半用来构建左子树
     node->left = ngx_http_create_locations_tree(cf, locations, prefix);
     if (node->left == NULL) {
         return NULL;
     }
-
+	//	将当前 location 移除队列
     ngx_queue_remove(q);
 
     if (ngx_queue_empty(&tail)) {
         goto inclusive;
     }
-
+	//	用另外一半构建右子树
     node->right = ngx_http_create_locations_tree(cf, &tail, prefix);
     if (node->right == NULL) {
         return NULL;
@@ -1145,7 +1183,8 @@ inclusive:
     if (ngx_queue_empty(&lq->list)) {
         return node;
     }
-
+	//	递归构建 lq->list tree，prefix = prefix + len
+	/*	递归建立location三叉排序树	*/
     node->tree = ngx_http_create_locations_tree(cf, &lq->list, prefix + len);
     if (node->tree == NULL) {
         return NULL;
@@ -1403,7 +1442,7 @@ ngx_http_optimize_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
 
     port = ports->elts;
     for (p = 0; p < ports->nelts; p++) {
-
+		//	将addrs排序，带通配符的地址排在后面 
         ngx_sort(port[p].addrs.elts, (size_t) port[p].addrs.nelts,
                  sizeof(ngx_http_conf_addr_t), ngx_http_cmp_conf_addrs);
 
@@ -1421,6 +1460,11 @@ ngx_http_optimize_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
 #endif
                )
             {
+            	/** 
+                 * 初始addr(ngx_http_conf_addr_t)中的hash、wc_head和wc_tail哈希表。 
+                 * 这些哈希表以server name（虚拟主机名）为key，server块的ngx_http_core_srv_conf_t为 
+                 * value，用于在处理请求时，根据请求的host请求行快速找到处理该请求的server配置结构。 
+                 */
                 if (ngx_http_server_names(cf, cmcf, &addr[a]) != NGX_OK) {
                     return NGX_ERROR;
                 }

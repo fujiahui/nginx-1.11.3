@@ -3136,26 +3136,26 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
         if (len == 1 && mod[0] == '=') {
 
             clcf->name = *name;
-            clcf->exact_match = 1;
+            clcf->exact_match = 1;	//	精确匹配
 
         } else if (len == 2 && mod[0] == '^' && mod[1] == '~') {
 
             clcf->name = *name;
-            clcf->noregex = 1;
+            clcf->noregex = 1;	// 前缀匹配 , 匹配上后不进行正则匹配
 
         } else if (len == 1 && mod[0] == '~') {
-
+			//	正则匹配 区分大小写
             if (ngx_http_core_regex_location(cf, clcf, name, 0) != NGX_OK) {
                 return NGX_CONF_ERROR;
             }
 
         } else if (len == 2 && mod[0] == '~' && mod[1] == '*') {
-
+			//	正则匹配 不区分大小写
             if (ngx_http_core_regex_location(cf, clcf, name, 1) != NGX_OK) {
                 return NGX_CONF_ERROR;
             }
 
-        } else {
+        } else {	//	非法的location
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "invalid location modifier \"%V\"", &value[1]);
             return NGX_CONF_ERROR;
@@ -3201,7 +3201,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
 
             clcf->name = *name;
 
-            if (name->data[0] == '@') {
+            if (name->data[0] == '@') {	//	命名规则
                 clcf->named = 1;
             }
         }
@@ -3217,7 +3217,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
         clcf->prev_location = pclcf;
 #endif
 
-        if (pclcf->exact_match) {
+        if (pclcf->exact_match) {	//	如果父location是 精确匹配 则不存在子location
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "location \"%V\" cannot be inside "
                                "the exact location \"%V\"",
@@ -3225,7 +3225,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
             return NGX_CONF_ERROR;
         }
 
-        if (pclcf->named) {
+        if (pclcf->named) {	//	如果父location是 命名规则 则不存在子location
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "location \"%V\" cannot be inside "
                                "the named location \"%V\"",
@@ -3233,7 +3233,7 @@ ngx_http_core_location(ngx_conf_t *cf, ngx_command_t *cmd, void *dummy)
             return NGX_CONF_ERROR;
         }
 
-        if (clcf->named) {
+        if (clcf->named) {	//	命名规则 不能是子location
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "named location \"%V\" can be "
                                "on the server level only",

@@ -426,6 +426,9 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
 				 * 其配置项存储空间是全局作用域对应的存储空间。
 				 * 这个类型的指令主要出现在ngx_core_module模块里。
 				 */
+				 // (void **)表示将cf->ctx强制转换成 '指向 指针 的指针'
+				 // ((void **) cf->ctx)表示一个是一个数组，数组元素是指针
+				 // ((void **) cf->ctx)[0]表示取得第一个元素
                 conf = ((void **) cf->ctx)[cf->cycle->modules[i]->index];
 
             } else if (cmd->type & NGX_MAIN_CONF) {
@@ -439,12 +442,14 @@ ngx_conf_handler(ngx_conf_t *cf, ngx_int_t last)
             	 * 所以在指令处理函数中分配的空间需要挂接到全局作用域中，
             	 * 故传递给指令处理函数的参数是全局作用域的地址。
 				 */
+				 //	这时候是取一个数组的地址
                 conf = &(((void **) cf->ctx)[cf->cycle->modules[i]->index]);
 
             } else if (cf->ctx) {
             	/*
             	 * 其它类型配置指令项的存储位置和指令出现的作用域(并且非全局作用域)有关
             	 */
+            	 // 这时候的cg->ctx不是cycle->conf_ctx
                 confp = *(void **) ((char *) cf->ctx + cmd->conf);
 
                 if (confp) {

@@ -363,8 +363,10 @@ struct ngx_http_core_loc_conf_s {
 #endif
 #endif
 	//	静态二叉树
+	// 字符串匹配的location , 树
     ngx_http_location_tree_node_t   *static_locations;
 #if (NGX_PCRE)
+	// 正则匹配的location , 数组
     ngx_http_core_loc_conf_t       **regex_locations;
 #endif
 	/*
