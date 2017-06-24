@@ -269,7 +269,7 @@ ngx_process_events_and_timers(ngx_cycle_t *cycle)
     ngx_event_process_posted(cycle, &ngx_posted_events);
 }
 
-
+// NGX_CLEAR_EVENT表示边缘触发
 ngx_int_t
 ngx_handle_read_event(ngx_event_t *rev, ngx_uint_t flags)
 {
@@ -842,7 +842,7 @@ ngx_event_process_init(ngx_cycle_t *cycle)
 #if (NGX_HAVE_REUSEPORT)
 
         if (ls[i].reuseport) {
-            if (ngx_add_event(rev, NGX_READ_EVENT, 0) == NGX_ERROR) {
+            if (ngx_add_event(rev, NGX_READ_EVENT, 0) == NGX_ERROR) {	//	ngx_add_event对于epoll是水平触发模式
                 return NGX_ERROR;
             }
 

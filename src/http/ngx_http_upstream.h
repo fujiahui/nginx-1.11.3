@@ -330,7 +330,7 @@ struct ngx_http_upstream_s {
     ngx_chain_t                     *free_bufs;
 
     ngx_int_t                      (*input_filter_init)(void *data);
-    ngx_int_t                      (*input_filter)(void *data, ssize_t bytes);
+    ngx_int_t                      (*input_filter)(void *data, ssize_t bytes);	//	解析包体的方法
     void                            *input_filter_ctx;
 
 #if (NGX_HTTP_CACHE)
@@ -338,7 +338,7 @@ struct ngx_http_upstream_s {
 #endif
     ngx_int_t                      (*create_request)(ngx_http_request_t *r);
     ngx_int_t                      (*reinit_request)(ngx_http_request_t *r);
-    ngx_int_t                      (*process_header)(ngx_http_request_t *r);
+    ngx_int_t                      (*process_header)(ngx_http_request_t *r);	//	解析包头方法
     void                           (*abort_request)(ngx_http_request_t *r);
     void                           (*finalize_request)(ngx_http_request_t *r,
                                          ngx_int_t rc);

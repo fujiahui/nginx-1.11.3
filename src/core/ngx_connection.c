@@ -1045,8 +1045,8 @@ ngx_get_connection(ngx_socket_t s, ngx_log_t *log)
 
     c = ngx_cycle->free_connections;
 
-    if (c == NULL) {
-        ngx_drain_connections();
+    if (c == NULL) {	// 表示连接已经耗尽
+        ngx_drain_connections();	//	将一些keepalive连接给释放掉
         c = ngx_cycle->free_connections;
     }
 
@@ -1086,7 +1086,7 @@ ngx_get_connection(ngx_socket_t s, ngx_log_t *log)
     rev->index = NGX_INVALID_INDEX;
     wev->index = NGX_INVALID_INDEX;
 
-    rev->data = c;
+    rev->data = c;	// 设置event的data数据指向connection
     wev->data = c;
 
     wev->write = 1;
@@ -1120,7 +1120,7 @@ ngx_close_connection(ngx_connection_t *c)
         return;
     }
 
-    if (c->read->timer_set) {
+    if (c->read->timer_set) {	// 清除定时器设置
         ngx_del_timer(c->read);
     }
 
@@ -1154,7 +1154,7 @@ ngx_close_connection(ngx_connection_t *c)
     c->read->closed = 1;
     c->write->closed = 1;
 
-    ngx_reusable_connection(c, 0);
+    ngx_reusable_connection(c, 0);	//	第二个参数为0，说明仅仅从reusable队列中移除 不再插入到头中
 
     log_error = c->log_error;
 
@@ -1205,19 +1205,20 @@ ngx_reusable_connection(ngx_connection_t *c, ngx_uint_t reusable)
     ngx_log_debug1(NGX_LOG_DEBUG_CORE, c->log, 0,
                    "reusable connection: %ui", reusable);
 
-    if (c->reusable) {
+    if (c->reusable) {	//	一旦一个keepalive的连接正常处理了，就将其从reusable队列中移除
         ngx_queue_remove(&c->queue);
 
 #if (NGX_STAT_STUB)
         (void) ngx_atomic_fetch_add(ngx_stat_waiting, -1);
 #endif
     }
-
+	// 在ngx_http_set_keepalive中会将reusable置为1，reusable为1的直接效果  
+    // 就是将该连接插到reusable_connections_queue中
     c->reusable = reusable;
 
     if (reusable) {
         /* need cast as ngx_cycle is volatile */
-
+		//	这里使用头插法，较新的连接靠近头部，时间越久未被处理的连接越靠尾
         ngx_queue_insert_head(
             (ngx_queue_t *) &ngx_cycle->reusable_connections_queue, &c->queue);
 
@@ -1234,18 +1235,22 @@ ngx_drain_connections(void)
     ngx_int_t          i;
     ngx_queue_t       *q;
     ngx_connection_t  *c;
-
+	//	清理32个keepalive连接，以回收一些连接池供新连接使用 
     for (i = 0; i < 32; i++) {
-        if (ngx_queue_empty(&ngx_cycle->reusable_connections_queue)) {
+        if (ngx_queue_empty(&ngx_cycle->reusable_connections_queue)) {	//	查看keepalive的reusable队列是否为空
             break;
         }
-
+		// reusable连接队列是从头插入的，意味着越靠近队列尾部的连接，空闲未被  
+        // 使用的时间就越长，这种情况下，优先回收它，类似LRU 
         q = ngx_queue_last(&ngx_cycle->reusable_connections_queue);
         c = ngx_queue_data(q, ngx_connection_t, queue);
 
         ngx_log_debug0(NGX_LOG_DEBUG_CORE, c->log, 0,
                        "reusing connection");
-
+		// 这里的handler是ngx_http_keepalive_handler，这函数里，由于close被置1，  
+        // 所以会执行ngx_http_close_connection来释放连接，这样也就发生了keepalive  
+        // 连接被强制断掉的现象了。
+        // ngx_http_set_keepalive会设置ngx_http_keepalive_handler为回调函数
         c->close = 1;
         c->read->handler(c->read);
     }

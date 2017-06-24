@@ -216,7 +216,7 @@ ngx_event_accept(ngx_event_t *ev)
         c->pool->log = log;
 
         c->socklen = socklen;
-        c->listening = ls;
+        c->listening = ls;	//	保存listen结构 以便后面找到具体的server模块
         c->local_sockaddr = ls->sockaddr;
         c->local_socklen = ls->socklen;
 
@@ -309,7 +309,7 @@ ngx_event_accept(ngx_event_t *ev)
 
         log->data = NULL;
         log->handler = NULL;
-
+		//	因为event和http是隔离的  互相是不知道的  所以必须要在http模块设置监听端口的时候 就设置好回调函数
         ls->handler(c);	//	ngx_http_init_connection
 
         if (ngx_event_flags & NGX_USE_KQUEUE_EVENT) {

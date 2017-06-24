@@ -38,7 +38,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
 
     type = (pc->type ? pc->type : SOCK_STREAM);
 
-    s = ngx_socket(pc->sockaddr->sa_family, type, 0);
+    s = ngx_socket(pc->sockaddr->sa_family, type, 0);	//	构造一个connection socket
 
     ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "%s socket %d",
                    (type == SOCK_STREAM) ? "stream" : "dgram", s);
@@ -50,7 +50,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     }
 
 
-    c = ngx_get_connection(s, pc->log);
+    c = ngx_get_connection(s, pc->log);	//获取一个connecction
 
     if (c == NULL) {
         if (ngx_close_socket(s) == -1) {
@@ -73,7 +73,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
         }
     }
 
-    if (ngx_nonblocking(s) == -1) {
+    if (ngx_nonblocking(s) == -1) {	//	设置成非阻塞
         ngx_log_error(NGX_LOG_ALERT, pc->log, ngx_socket_errno,
                       ngx_nonblocking_n " failed");
 
@@ -181,7 +181,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     c->number = ngx_atomic_fetch_add(ngx_connection_counter, 1);
 
     if (ngx_add_conn) {
-        if (ngx_add_conn(c) == NGX_ERROR) {
+        if (ngx_add_conn(c) == NGX_ERROR) {	//	把套接字以期待的读写事件的方式加入到epoll中
             goto failed;
         }
     }
@@ -189,7 +189,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, pc->log, 0,
                    "connect to %V, fd:%d #%uA", pc->name, s, c->number);
 
-    rc = connect(s, pc->sockaddr, pc->socklen);
+    rc = connect(s, pc->sockaddr, pc->socklen);	//	建立连接
 
     if (rc == -1) {
         err = ngx_socket_errno;

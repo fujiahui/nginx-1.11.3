@@ -291,7 +291,11 @@ ngx_http_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 		 *
 		*/
         clcf = cscfp[s]->ctx->loc_conf[ngx_http_core_module.ctx_index];
-		
+		/*
+		 * cf->ctx = ctx;	//	指向http{}模块的ngx_http_conf_ctx_t
+		 * cscfp[s] 第s个server{}模块的ngx_http_core_srv_conf_t
+		 * clcf 第s个server{}模块的ngx_http_core_loc_conf_t信息: 因为server{}模块下的location配置项由server{}下的ngx_http_core_srv_conf_t结构体中locations以队列queue方式管理起来的
+		*/
         if (ngx_http_init_locations(cf, cscfp[s], clcf) != NGX_OK) {
             return NGX_CONF_ERROR;
         }
@@ -857,6 +861,7 @@ ngx_http_init_static_location_trees(ngx_conf_t *cf,
         return NGX_OK;
     }
 	//	这里也是由于nested location，需要递归一下
+	//	ngx_http_core_find_location 也会递归调用查找
     for (q = ngx_queue_head(locations);
          q != ngx_queue_sentinel(locations);
          q = ngx_queue_next(q))
@@ -948,7 +953,7 @@ ngx_http_cmp_locations(const ngx_queue_t *one, const ngx_queue_t *two)
 
     first = lq1->exact ? lq1->exact : lq1->inclusive;
     second = lq2->exact ? lq2->exact : lq2->inclusive;
-
+	//	noname 是指location 模块下的if(){} 模块 排序应该将noname放到非noname的最后
     if (first->noname && !second->noname) {
         /* shift no named locations to the end */
         return 1;
@@ -958,12 +963,12 @@ ngx_http_cmp_locations(const ngx_queue_t *one, const ngx_queue_t *two)
         /* shift no named locations to the end */
         return -1;
     }
-
+	//	对于都是noname的不进行排序 (插入排序是稳定排序)
     if (first->noname || second->noname) {
         /* do not sort no named locations */
         return 0;
     }
-
+	//	named 是指 location @name {} 模块 排序时应该将named放在非named的最后
     if (first->named && !second->named) {
         /* shift named locations to the end */
         return 1;
@@ -973,13 +978,13 @@ ngx_http_cmp_locations(const ngx_queue_t *one, const ngx_queue_t *two)
         /* shift named locations to the end */
         return -1;
     }
-
+	// 对于都是named的 按照字符进行排序
     if (first->named && second->named) {
         return ngx_strcmp(first->name.data, second->name.data);
     }
 
 #if (NGX_PCRE)
-
+	//	regex 是指 location ~* .(gif|jpeg)${} 模块 排序时应该将regex放在非regex最后
     if (first->regex && !second->regex) {
         /* shift the regex matches to the end */
         return 1;
@@ -989,14 +994,15 @@ ngx_http_cmp_locations(const ngx_queue_t *one, const ngx_queue_t *two)
         /* shift the regex matches to the end */
         return -1;
     }
-
+	//	对于都是regex的不进行排序 (插入排序是稳定排序)
     if (first->regex || second->regex) {
         /* do not sort the regex matches */
         return 0;
     }
 
 #endif
-
+	//	到这里只剩下 exact_match 和 noregex
+	// 形如 loaction =/ {}、location /example/{} 和 location ^~ /images/{} 
     rc = ngx_filename_cmp(first->name.data, second->name.data,
                           ngx_min(first->name.len, second->name.len) + 1);
 
@@ -1107,9 +1113,9 @@ ngx_http_create_locations_list(ngx_queue_t *locations, ngx_queue_t *q)
 
     ngx_queue_split(&lq->list, x, &tail);
     ngx_queue_add(locations, &tail);
-
+	//	开始递归处理 lq->list 部分
     ngx_http_create_locations_list(&lq->list, ngx_queue_head(&lq->list));
-
+	//	开始递归处理 x 部分
     ngx_http_create_locations_list(locations, x);
 }
 
@@ -1443,6 +1449,7 @@ ngx_http_optimize_servers(ngx_conf_t *cf, ngx_http_core_main_conf_t *cmcf,
     port = ports->elts;
     for (p = 0; p < ports->nelts; p++) {
 		//	将addrs排序，带通配符的地址排在后面 
+		// *:port | ip:port
         ngx_sort(port[p].addrs.elts, (size_t) port[p].addrs.nelts,
                  sizeof(ngx_http_conf_addr_t), ngx_http_cmp_conf_addrs);
 
@@ -1644,7 +1651,7 @@ ngx_http_cmp_conf_addrs(const void *one, const void *two)
     first = (ngx_http_conf_addr_t *) one;
     second = (ngx_http_conf_addr_t *) two;
 
-    if (first->opt.wildcard) {
+    if (first->opt.wildcard) { // 'listen 8000;' or 'listen *.8000;'
         /* a wildcard address must be the last resort, shift it to the end */
         return 1;
     }
@@ -1654,7 +1661,7 @@ ngx_http_cmp_conf_addrs(const void *one, const void *two)
         return -1;
     }
 
-    if (first->opt.bind && !second->opt.bind) {
+    if (first->opt.bind && !second->opt.bind) { // 'listen 127.0.0.1 bind;' and 'listen 127.0.0.1'
         /* shift explicit bind()ed addresses to the start */
         return -1;
     }
@@ -1701,6 +1708,11 @@ ngx_http_init_listening(ngx_conf_t *cf, ngx_http_conf_port_t *port)
      */
 
     if (addr[last - 1].opt.wildcard) {
+		/*
+		 * 只把最后一个通配的设置为bind，这样前面的通配不具有bind标记
+		 * 对于bind的标记，
+		 * 典型的情况(已排序好的)是 ：binded|nobind|wildcard(nobind)|wildcard(binded)
+		*/
         addr[last - 1].opt.bind = 1;
         bind_wildcard = 1;
 
@@ -1709,14 +1721,21 @@ ngx_http_init_listening(ngx_conf_t *cf, ngx_http_conf_port_t *port)
     }
 
     i = 0;
+	/*
+	 * 如果一台机器存在三个ip地址分别为ip1、ip2、ip3
+	 * 1. listen ip1:port bind; listen ip2:port; listen *:port; 非法
+	 * 2. listen ip1:port; listen ip2:port; listen *.port; 合法
+	 * 3. listen ip1:port bind; listen ip2:port; 合法
+	*/
 
-    while (i < last) {
-
+    while (i < last) {	//	last代表的是address:port的个数
+		//	忽略隐式绑定
         if (bind_wildcard && !addr[i].opt.bind) {
             i++;
             continue;
         }
-
+		// 这个函数里面将会创建，并且初始化listen结构，
+		// 这个listen已经存放在cycle结构的listen数组中
         ls = ngx_http_add_listening(cf, &addr[i]);
         if (ls == NULL) {
             return NGX_ERROR;
@@ -1729,7 +1748,7 @@ ngx_http_init_listening(ngx_conf_t *cf, ngx_http_conf_port_t *port)
 
         ls->servers = hport;
 
-        hport->naddrs = i + 1;
+        hport->naddrs = i + 1;/* 表示之前有多少个隐式绑定跳过 + 自身这个通配符*/
 
         switch (ls->sockaddr->sa_family) {
 
@@ -1740,13 +1759,13 @@ ngx_http_init_listening(ngx_conf_t *cf, ngx_http_conf_port_t *port)
             }
             break;
 #endif
-        default: /* AF_INET */
+        default: /* AF_INET */ /*初始化虚拟主机相关的地址，设置hash等等*/
             if (ngx_http_add_addrs(cf, hport, addr) != NGX_OK) {
                 return NGX_ERROR;
             }
             break;
         }
-
+		// reuseport 选项 listen 8000 reuse_port; 对每个进程创建自己的套接字 不再使用同一个套接字
         if (ngx_clone_listening(cf, ls) != NGX_OK) {
             return NGX_ERROR;
         }
@@ -1773,7 +1792,7 @@ ngx_http_add_listening(ngx_conf_t *cf, ngx_http_conf_addr_t *addr)
     }
 
     ls->addr_ntop = 1;
-
+	//	套接字上的回调是ngx_http_init_connection函数
     ls->handler = ngx_http_init_connection;
 
     cscf = addr->default_server;

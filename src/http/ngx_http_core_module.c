@@ -793,7 +793,7 @@ ngx_http_handler(ngx_http_request_t *r)
 
     r->connection->log->action = NULL;
 
-    if (!r->internal) {
+    if (!r->internal) {	// internal为0 表示不需要重定向
         switch (r->headers_in.connection_type) {
         case 0:
             r->keepalive = (r->http_version > NGX_HTTP_VERSION_10);
@@ -810,10 +810,12 @@ ngx_http_handler(ngx_http_request_t *r)
 
         r->lingering_close = (r->headers_in.content_length_n > 0
                               || r->headers_in.chunked);
-        r->phase_handler = 0;
+        r->phase_handler = 0;	//	从ngx_http_phase_engine_t指定数组的第一个回调方法开始执行
 
-    } else {
+    }
+	else {	//internal为1，表示需要做内部跳转
         cmcf = ngx_http_get_module_main_conf(r, ngx_http_core_module);
+		//	设置phase_handler 无论之前处理到了哪一步 开始从NGX_HTTP_SERVER_REWRITE_PHASE阶段执行
         r->phase_handler = cmcf->phase_engine.server_rewrite_index;
     }
 
@@ -823,8 +825,8 @@ ngx_http_handler(ngx_http_request_t *r)
     r->gzip_ok = 0;
     r->gzip_vary = 0;
 #endif
-
-    r->write_event_handler = ngx_http_core_run_phases;
+	//	ngx_http_core_run_phases会调用http模块的具体handler方法
+    r->write_event_handler = ngx_http_core_run_phases;	//	设置write_event_handler
     ngx_http_core_run_phases(r);
 }
 
@@ -839,8 +841,8 @@ ngx_http_core_run_phases(ngx_http_request_t *r)
     cmcf = ngx_http_get_module_main_conf(r, ngx_http_core_module);
 
     ph = cmcf->phase_engine.handlers;
-
-    while (ph[r->phase_handler].checker) {
+	//	phase_handler 决定当前执行到了哪一步
+    while (ph[r->phase_handler].checker) {	// handler只能在checker方法中被调用	
 
         rc = ph[r->phase_handler].checker(r, &ph[r->phase_handler]);
 
@@ -3979,7 +3981,29 @@ ngx_http_core_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     return NGX_CONF_OK;
 }
 
-
+/*	http://nginx.org/en/docs/http/ngx_http_core_module.html#listen
+ * 1. listen 192.168.1.100:8080
+ * 2. listen 192.168.1.100
+ * 3. listen 8080
+ * 4. listen *.8080
+ * 5. listen localhost:8080
+ *
+ * ipv6:
+ * 
+ * listen [::]:8000
+ * listen [fe80::1]
+ *
+ * unix域套接字:
+ * 
+ * listen unix:/var/run/nginx.sock
+*/
+/*
+ * listen规则:
+ * 1. 如果只定义了address，nginx将使用80端口
+ * 2. 如果listen指令携带default_server参数，当前虚拟主机将成为指定address:port的默认虚拟主机
+ * 3. 如果任何listen指令都没有携带default_server参数，那么第一个监听address:port的虚拟主机将被作为这个地址的默认虚拟主机
+ * 4. 
+*/
 static char *
 ngx_http_core_listen(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {

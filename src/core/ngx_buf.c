@@ -186,6 +186,8 @@ ngx_chain_get_free_buf(ngx_pool_t *p, ngx_chain_t **free)
     return cl;
 }
 
+//该函数功能就是把新读到的out数据添加到busy表尾部，然后把busy表中已经处理完毕的buf节点从busy表中摘除，然后放到free表头部
+//未发送出去的buf节点既会在out链表中，也会在busy链表中
 
 void
 ngx_chain_update_chains(ngx_pool_t *p, ngx_chain_t **free, ngx_chain_t **busy,
@@ -202,20 +204,20 @@ ngx_chain_update_chains(ngx_pool_t *p, ngx_chain_t **free, ngx_chain_t **busy,
     	// 找到busy的尾
         for (cl = *busy; cl->next; cl = cl->next) { /* void */ }
 
-        cl->next = *out;
+        cl->next = *out;	//	将out添加到busy的末尾
     }
 
-    *out = NULL;
+    *out = NULL;	//	out指向空链表
 
     while (*busy) {
         cl = *busy;
 
 		// 如果存在需要处理的内存空间last-pos!=0,则停止处理
-        if (ngx_buf_size(cl->buf) != 0) {
+        if (ngx_buf_size(cl->buf) != 0) {//
             break;
         }
 
-        if (cl->buf->tag != tag) {
+        if (cl->buf->tag != tag) {	//	tag表示当前正在处理的模块或者函数地址
 			// busy下一个节点
             *busy = cl->next;
 			//	回收chain节点到pool中
@@ -229,6 +231,7 @@ ngx_chain_update_chains(ngx_pool_t *p, ngx_chain_t **free, ngx_chain_t **busy,
 
 		// busy下一个节点
         *busy = cl->next;
+		//	回收出c1节点
         cl->next = *free;
         *free = cl;
     }

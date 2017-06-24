@@ -799,7 +799,7 @@ ngx_parse_inet_url(ngx_pool_t *pool, ngx_url_t *u)
     u->host.len = len;
     u->host.data = host;
 
-    if (u->listen && len == 1 && *host == '*') {
+    if (u->listen && len == 1 && *host == '*') {	// *:port
         sin->sin_addr.s_addr = INADDR_ANY;
         u->wildcard = 1;
         return NGX_OK;
